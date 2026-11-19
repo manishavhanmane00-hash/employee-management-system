@@ -1,0 +1,224 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Calendar, Upload } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { LEAVE_TYPES } from '../../data/sampleData';
+import { readLeaveDocument } from '../../utils/leaveDocument';
+import toast from 'react-hot-toast';
+
+// Screenshot leave-type labels offered in the form (Req 2.2).
+// Each label maps to the stored `Leave` enum value (Req 2.3, 18.1): the "Earned"
+// label is submitted as the existing enum value "Annual Leave" so the enum stays valid.
+const LEAVE_TYPE_OPTIONS = [
+  { label: 'Casual',     value: 'Casual Leave' },
+  { label: 'Sick',       value: 'Sick Leave' },
+  { label: 'Earned',     value: 'Annual Leave' },
+  { label: 'Unpaid',     value: 'Unpaid Leave' },
+  { label: 'Maternity',  value: 'Maternity Leave' },
+  { label: 'Paternity',  value: 'Paternity Leave' },
+  { label: 'Compensatory', value: 'Compensatory Leave' },
+];
+
+const ApplyLeave = () => {
+  const navigate = useNavigate();
+  const { addLeaveRequest, leaveBalances } = useApp();
+  const { user } = useAuth();
+  const [form, setForm] = useState({ leaveType: '', startDate: '', endDate: '', paidStatus: 'Paid', reason: '' });
+  const [supportingDocument, setSupportingDocument] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setErrors(e => ({ ...e, [k]: '' })); };
+
+  const days = form.startDate && form.endDate ? (() => {
+    const d = Math.ceil((new Date(form.endDate) - new Date(form.startDate)) / 86400000) + 1;
+    return d > 0 ? d : 0;
+  })() : 0;
+
+  const balance = leaveBalances;
+
+  const validate = () => {
+    const errs = {};
+    if (!form.leaveType) errs.leaveType = 'Select leave type';
+    if (!form.startDate) errs.startDate = 'Select start date';
+    if (!form.endDate) errs.endDate = 'Select end date';
+    if (!form.reason) errs.reason = 'Provide a reason';
+    if (form.startDate && form.endDate && form.endDate < form.startDate) errs.endDate = 'End date cannot be before start date';
+    const mapped = LEAVE_TYPE_OPTIONS.find(type => type.label === form.leaveType);
+    const leaveType = mapped?.value || form.leaveType;
+    const leaveCategory = leaveType === 'Unpaid Leave' ? 'Unpaid' : form.paidStatus;
+    const leaveBalance = balance?.find(item => item.leaveType === leaveType);
+    if (leaveCategory === 'Paid' && leaveBalance && days > leaveBalance.remaining) {
+      errs.leaveType = `Insufficient balance. You have ${leaveBalance.remaining} days available.`;
+    }
+    return errs;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    setSubmitting(true);
+    try {
+      // Map the screenshot label to the stored Leave enum value (Earned → "Annual Leave").
+      const mapped = LEAVE_TYPE_OPTIONS.find(t => t.label === form.leaveType);
+      const leaveType = mapped ? mapped.value : form.leaveType;
+      await addLeaveRequest({
+        leaveType,
+        paidStatus: leaveType === 'Unpaid Leave' ? 'Unpaid' : form.paidStatus,
+        startDate: form.startDate,
+        endDate: form.endDate,
+        days,
+        reason: form.reason,
+        supportingDocument,
+      });
+      toast.success('Leave request submitted successfully');
+      navigate('/leave/requests');
+    } catch (err) {
+      // Surface the backend validation message and retain entered values (Req 17.2).
+      toast.error(err.message || 'Failed to submit leave request');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <div className="breadcrumb"><span>Leave</span><span className="breadcrumb-sep">/</span><span>Apply Leave</span></div>
+        <h1 className="page-title">Apply for Leave</h1>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24 }}>
+        <div className="card">
+          <div className="card-header"><h3 className="card-title">Leave Application</h3></div>
+          <div className="card-body">
+            <form onSubmit={handleSubmit}>
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label className="form-label">Requesting as</label>
+                  <div className="form-control" aria-readonly="true">
+                    {user?.name || 'Authenticated user'}{user?.employeeId ? ` · ${user.employeeId}` : ''}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Leave Type <span className="required">*</span></label>
+                  <select className={`form-control form-select ${errors.leaveType ? 'error' : ''}`} value={form.leaveType} onChange={e => {
+                    set('leaveType', e.target.value);
+                    if (e.target.value === 'Unpaid') set('paidStatus', 'Unpaid');
+                  }}>
+                    <option value="">Select leave type</option>
+                    {LEAVE_TYPE_OPTIONS.map(t => <option key={t.value} value={t.label}>{t.label}</option>)}
+                  </select>
+                  {errors.leaveType && <div className="form-error">{errors.leaveType}</div>}
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Leave Category <span className="required">*</span></label>
+                  <select className="form-control form-select" value={form.leaveType === 'Unpaid' ? 'Unpaid' : form.paidStatus}
+                    onChange={e => set('paidStatus', e.target.value)} disabled={form.leaveType === 'Unpaid'}>
+                    <option value="Paid">Paid Leave</option>
+                    <option value="Unpaid">Unpaid Leave</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Start Date <span className="required">*</span></label>
+                  <input type="date" className={`form-control ${errors.startDate ? 'error' : ''}`} value={form.startDate} onChange={e => set('startDate', e.target.value)} />
+                  {errors.startDate && <div className="form-error">{errors.startDate}</div>}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">End Date <span className="required">*</span></label>
+                  <input type="date" className={`form-control ${errors.endDate ? 'error' : ''}`} value={form.endDate} onChange={e => set('endDate', e.target.value)} min={form.startDate} />
+                  {errors.endDate && <div className="form-error">{errors.endDate}</div>}
+                </div>
+              </div>
+
+              {days > 0 && (
+                <div style={{ background: 'var(--primary-light)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Calendar size={16} color="var(--primary)" />
+                  <span style={{ fontSize: '0.875rem', color: 'var(--primary)', fontWeight: 500 }}>
+                    Duration: <strong>{days} calendar day{days > 1 ? 's' : ''}</strong>
+                  </span>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label">Reason <span className="required">*</span></label>
+                <textarea className={`form-control ${errors.reason ? 'error' : ''}`} rows={4} value={form.reason} onChange={e => set('reason', e.target.value)} placeholder="Describe the reason for your leave request..." />
+                {errors.reason && <div className="form-error">{errors.reason}</div>}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Supporting Document (optional)</label>
+                <div className="file-upload-area" style={{ padding: 20, cursor: 'pointer' }} onClick={() => document.getElementById('apply-leave-document')?.click()}>
+                  <Upload size={18} style={{ margin: '0 auto 8px', display: 'block', color: 'var(--text-muted)' }} />
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{supportingDocument?.name || 'Upload medical certificate or supporting document'}</div>
+                  <input id="apply-leave-document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" hidden
+                    onChange={async event => {
+                      try {
+                        setSupportingDocument(await readLeaveDocument(event.target.files?.[0]));
+                      } catch (error) {
+                        event.target.value = '';
+                        toast.error(error.message);
+                      }
+                    }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                <button type="button" className="btn btn-outline" onClick={() => navigate('/leave/requests')}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={submitting}>
+                  {submitting ? 'Submitting...' : 'Submit Leave Request'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        {/* Leave Balance Panel */}
+        <div>
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header"><h3 className="card-title">Leave Balance</h3></div>
+            <div className="card-body" style={{ padding: 16 }}>
+              {balance?.length ? (
+                LEAVE_TYPES.slice(0, 3).map(type => {
+                  const bal = balance.find(item => item.leaveType === type.name);
+                  if (!bal) return null;
+                  const remaining = bal.remaining;
+                  return (
+                    <div key={type.name} style={{ marginBottom: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>{type.name}</span>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary)' }}>{remaining}/{bal.entitlement}</span>
+                      </div>
+                      <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${(remaining / bal.entitlement) * 100}%`, background: remaining > 5 ? 'var(--success)' : remaining > 2 ? 'var(--warning)' : 'var(--danger)' }} />
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>{bal.used} used · {bal.pending} pending</div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', textAlign: 'center', padding: '16px 0' }}>Your leave balance is unavailable.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header"><h3 className="card-title">Leave Types</h3></div>
+            <div className="card-body" style={{ padding: 16 }}>
+              {LEAVE_TYPES.map(t => (
+                <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '0.8rem' }}>{t.name}</span>
+                  <span className={`badge badge-${t.color}`} style={{ fontSize: '0.7rem' }}>{t.days} days</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ApplyLeave;

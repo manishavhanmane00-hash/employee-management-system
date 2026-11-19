@@ -1,0 +1,238 @@
+import React, { useState, useMemo } from 'react';
+import { Calendar, Download, CheckCircle, Edit2 } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import Badge from '../../components/shared/Badge';
+import Avatar from '../../components/shared/Avatar';
+import Modal from '../../components/shared/Modal';
+import toast from 'react-hot-toast';
+
+const TODAY = new Date().toISOString().split('T')[0];
+
+const AttendanceModal = ({ employee, record, date, onSave, onClose }) => {
+  const [form, setForm] = useState(record || { status: 'present', checkIn: '09:00', checkOut: '18:00', late: false, overtime: 0 });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  return (
+    <form onSubmit={e => { e.preventDefault(); onSave({ ...form, employeeId: employee.employeeId, name: employee.name, email: employee.email || '', department: employee.department, date }); }}>
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Avatar name={employee.name} size="md" />
+        <div><div style={{ fontWeight: 600 }}>{employee.name}</div><div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{employee.employeeId || String(employee._id).slice(-6)} · {employee.department}</div></div>
+      </div>
+      <div className="grid grid-2 grid-gap-sm">
+        <div className="form-group">
+          <label className="form-label">Status</label>
+          <select className="form-control form-select" value={form.status} onChange={e => set('status', e.target.value)}>
+            <option value="present">Present</option>
+            <option value="absent">Absent</option>
+            <option value="late">Late</option>
+            <option value="half-day">Half Day</option>
+            <option value="leave">On Leave</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Check In</label>
+          <input type="time" className="form-control" value={form.checkIn || ''} onChange={e => set('checkIn', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Check Out</label>
+          <input type="time" className="form-control" value={form.checkOut || ''} onChange={e => set('checkOut', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Overtime (hours)</label>
+          <input type="number" className="form-control" step="0.5" min="0" value={form.overtime} onChange={e => set('overtime', Number(e.target.value))} />
+        </div>
+      </div>
+      <div className="form-check" style={{ marginBottom: 20 }}>
+        <input type="checkbox" id="late" checked={form.late} onChange={e => set('late', e.target.checked)} />
+        <label htmlFor="late">Mark as late arrival</label>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn-primary">Save Attendance</button>
+      </div>
+    </form>
+  );
+};
+
+const DailyAttendance = () => {
+  const { employees, attendanceData, markAttendance, departments } = useApp();
+  const { can } = useAuth();
+  const canMark = can('attendance', 'add');
+  const [selectedDate, setSelectedDate] = useState(TODAY);
+  const [deptFilter, setDeptFilter] = useState('');
+  const [editEmp, setEditEmp] = useState(null);
+
+  const dayAttendance = useMemo(() =>
+    attendanceData.filter(a => a.date === selectedDate),
+    [attendanceData, selectedDate]
+  );
+
+  const getRecord = employee => dayAttendance.find(a =>
+    a.employeeId === employee.employeeId
+    || a.employeeId === String(employee._id)
+    || (a.userId && String(a.userId) === String(employee.userId))
+  );
+
+  const filteredEmps = employees.filter(e => !deptFilter || e.department === deptFilter);
+
+  const stats = {
+    present: dayAttendance.filter(a => a.status === 'present').length,
+    absent: dayAttendance.filter(a => !a.holidays?.length && a.status === 'absent').length,
+    late: dayAttendance.filter(a => !a.holidays?.length && a.status === 'late').length,
+    leave: dayAttendance.filter(a => !a.holidays?.length && a.status === 'leave').length,
+  };
+
+  const handleSave = async (record) => {
+    const hours = record.checkIn && record.checkOut ? (() => {
+      const [hi, mi] = record.checkIn.split(':').map(Number);
+      const [ho, mo] = record.checkOut.split(':').map(Number);
+      return Number(((ho * 60 + mo - hi * 60 - mi) / 60).toFixed(1));
+    })() : 0;
+    try {
+      await markAttendance({ ...record, hours });
+      toast.success(`Attendance marked for ${record.name}`);
+    } catch (err) {
+      toast.error(err.message || 'Failed to save attendance');
+    }
+    setEditEmp(null);
+  };
+
+  const handleBulkMark = async (status) => {
+    const promises = filteredEmps.map(emp => {
+      const record = {
+        date: selectedDate,
+        employeeId: emp.employeeId,
+        name: emp.name,
+        email: emp.email,
+        department: emp.department,
+        checkIn: status === 'present' ? '09:00 AM' : null,
+        checkOut: status === 'present' ? '06:00 PM' : null,
+        hours: status === 'present' ? 9 : 0,
+        status,
+        late: false,
+        overtime: 0,
+      };
+      return markAttendance(record);
+    });
+    const outcomes = await Promise.allSettled(promises);
+    const succeeded = outcomes.filter(outcome => outcome.status === 'fulfilled').length;
+    const failed = outcomes.length - succeeded;
+    if (failed) toast.error(`Attendance updated for ${succeeded}; ${failed} record(s) were blocked or failed.`);
+    else toast.success(`Bulk marked ${succeeded} employees as ${status}`);
+  };
+
+  const handleExport = () => {
+    toast.success('Attendance exported');
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <div className="breadcrumb"><span>Attendance</span><span className="breadcrumb-sep">/</span><span>Daily Attendance</span></div>
+        <div className="page-header-top">
+          <div>
+            <h1 className="page-title">Daily Attendance</h1>
+            <p className="page-subtitle">Track and manage employee attendance</p>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {canMark && <button className="btn btn-outline btn-sm" onClick={() => handleBulkMark('present')}><CheckCircle size={14} /> Mark All Present</button>}
+            <button className="btn btn-outline btn-sm" onClick={handleExport}><Download size={14} /> Export</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-4 grid-gap-sm mb-5">
+        {[
+          { label: 'Present', value: stats.present, color: 'var(--success)', bg: 'var(--success-light)' },
+          { label: 'Absent', value: stats.absent, color: 'var(--danger)', bg: 'var(--danger-light)' },
+          { label: 'Late', value: stats.late, color: 'var(--warning)', bg: 'var(--warning-light)' },
+          { label: 'On Leave', value: stats.leave, color: 'var(--info)', bg: 'var(--info-light)' },
+        ].map(s => (
+          <div key={s.label} className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 10, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '1.2rem', fontWeight: 700, color: s.color }}>{s.value}</span>
+            </div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 500 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="card" style={{ marginBottom: 20, padding: '14px 20px' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Calendar size={16} style={{ color: 'var(--text-muted)' }} />
+            <input type="date" className="form-control" style={{ width: 160 }} value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
+          </div>
+          <select className="form-control form-select" style={{ width: 180 }} value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
+            <option value="">All Departments</option>
+            {departments.map(d => <option key={d._id || d.id} value={d.name}>{d.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="table-container">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Employee</th><th>Emp ID</th><th>Department</th><th>Check In</th><th>Check Out</th>
+              <th>Hours</th><th>Status</th><th>Late</th><th>Overtime</th><th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredEmps.map(emp => {
+              const rec = getRecord(emp);
+              return (
+                <tr key={emp._id}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <Avatar name={emp.name} size="sm" />
+                      <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>{emp.name}</span>
+                    </div>
+                  </td>
+                  <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{emp.employeeId || String(emp._id).slice(-6).toUpperCase()}</td>
+                  <td style={{ fontSize: '0.875rem' }}>{emp.department}</td>
+                  <td style={{ fontSize: '0.875rem' }}>{rec?.checkIn || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                  <td style={{ fontSize: '0.875rem' }}>{rec?.checkOut || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                  <td style={{ fontSize: '0.875rem' }}>{rec?.hours ? `${rec.hours}h` : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                  <td>
+                    {rec?.holidays?.length ? (
+                      <div>
+                        <Badge status="holiday" label={rec.holidays[0].holidayStatus} variant="badge-info" />
+                        {rec.holidays.map(holiday => <div key={String(holiday.holidayId)} style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3 }}>{holiday.holidayName}</div>)}
+                      </div>
+                    ) : rec ? (
+                      <Badge status={rec.status}
+                        label={rec.status === 'leave'
+                          ? `Leave (${rec.leavePayStatus || (rec.leaveType === 'Unpaid Leave' ? 'Unpaid' : 'Paid')})`
+                          : undefined} />
+                    ) : <Badge status="absent" />}
+                  </td>
+                  <td>{rec?.late ? <span style={{ color: 'var(--warning)', fontSize: '0.8rem', fontWeight: 600 }}>Late</span> : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>}</td>
+                  <td style={{ fontSize: '0.875rem' }}>{rec?.overtime ? `${rec.overtime}h` : '—'}</td>
+                  <td>
+                    {canMark && !rec?.holidays?.length && rec?.status !== 'leave' ? (
+                      <button className="btn-icon primary" onClick={() => setEditEmp({ emp, record: rec })} title="Mark Attendance">
+                        <Edit2 size={13} />
+                      </button>
+                    ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {editEmp && (
+        <Modal open={true} onClose={() => setEditEmp(null)} title="Mark Attendance" size="md">
+          <AttendanceModal           employee={editEmp.emp} record={editEmp.record} date={selectedDate} onSave={handleSave} onClose={() => setEditEmp(null)} />
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+export default DailyAttendance;

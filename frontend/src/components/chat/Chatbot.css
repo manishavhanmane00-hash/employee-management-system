@@ -1,0 +1,57 @@
+.ems-chat-root { position: fixed; right: 22px; bottom: 20px; z-index: 1200; font-family: inherit; }
+.ems-chat-launcher { display: flex; align-items: center; gap: 9px; border: 0; border-radius: 999px; padding: 13px 18px; color: #fff; background: var(--primary, #3156a3); box-shadow: 0 8px 26px rgba(20, 35, 75, .24); cursor: pointer; font-weight: 600; }
+.ems-chat-panel { width: min(390px, calc(100vw - 28px)); height: min(620px, calc(100dvh - 100px)); background: var(--surface, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 16px; box-shadow: 0 18px 55px rgba(17, 24, 39, .22); margin-bottom: 12px; display: flex; flex-direction: column; overflow: hidden; color: var(--text-primary, #1f2937); }
+.ems-chat-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border, #e5e7eb); }
+.ems-chat-brand { display: flex; align-items: center; gap: 10px; }
+.ems-chat-brand > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.ems-chat-brand small, .ems-chat-source, .ems-chat-ticket small { color: var(--text-muted, #6b7280); font-size: .73rem; }
+.ems-chat-icon { color: var(--primary, #3156a3); background: rgba(49, 86, 163, .1); width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; }
+.ems-chat-icon-button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 6px; }
+.ems-chat-tabs { display: flex; padding: 0 14px; border-bottom: 1px solid var(--border, #e5e7eb); }
+.ems-chat-tabs button { border: 0; background: transparent; padding: 10px 12px; cursor: pointer; color: var(--text-secondary, #6b7280); display: inline-flex; gap: 6px; align-items: center; border-bottom: 2px solid transparent; }
+.ems-chat-tabs button.active { color: var(--primary, #3156a3); border-color: var(--primary, #3156a3); font-weight: 600; }
+.ems-chat-input input, .ems-chat-feedback-form input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: .82rem; }
+.ems-chat-messages, .ems-chat-ticket-list { padding: 14px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.ems-chat-welcome { text-align: center; margin: auto; display: flex; align-items: center; flex-direction: column; gap: 8px; max-width: 260px; color: var(--text-secondary, #6b7280); font-size: .84rem; }
+.ems-chat-welcome svg { color: var(--primary, #3156a3); }
+.ems-chat-welcome strong { color: var(--text-primary, #1f2937); font-size: 1rem; }
+.ems-chat-user-message { align-self: flex-end; max-width: 88%; background: var(--primary, #3156a3); color: #fff; border-radius: 14px 14px 3px 14px; padding: 10px 12px; font-size: .85rem; white-space: pre-wrap; }
+.ems-chat-answer { align-self: flex-start; width: 100%; max-width: 95%; box-sizing: border-box; padding: 11px 12px; background: var(--surface-secondary, #f7f8fb); border: 1px solid var(--border, #e5e7eb); border-radius: 4px 14px 14px; font-size: .84rem; white-space: pre-wrap; }
+.ems-chat-answer p { margin: 0 0 7px; line-height: 1.5; }
+.ems-chat-feedback { display: flex; align-items: center; gap: 7px; color: var(--text-muted, #6b7280); font-size: .74rem; margin-top: 8px; }
+.ems-chat-feedback button { border: 1px solid var(--border, #d1d5db); color: inherit; background: transparent; display: grid; place-items: center; padding: 4px; border-radius: 5px; cursor: pointer; }
+.ems-chat-feedback button.selected { color: var(--primary, #3156a3); border-color: var(--primary, #3156a3); }
+.ems-chat-feedback-form { display: flex; gap: 6px; margin-top: 8px; }
+.ems-chat-feedback-form input { padding: 6px; border: 1px solid var(--border, #d1d5db); border-radius: 6px; }
+.ems-chat-feedback-form button, .ems-chat-escalate { border: 0; background: transparent; color: var(--primary, #3156a3); font-size: .76rem; font-weight: 600; cursor: pointer; }
+.ems-chat-escalate { margin-top: 9px; padding: 0; text-decoration: underline; }
+.ems-chat-suggestions { display: flex; gap: 7px; padding: 0 13px 10px; overflow-x: auto; flex-direction: column; }
+.ems-chat-suggestions > span { font-size: .72rem; color: var(--text-muted, #6b7280); }
+.ems-chat-suggestions button { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--border, #e5e7eb); color: var(--text-secondary, #4b5563); background: transparent; border-radius: 9px; padding: 7px 9px; font-size: .77rem; text-align: left; cursor: pointer; }
+.ems-chat-input { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border, #e5e7eb); padding: 12px; }
+.ems-chat-input input { padding: 9px 10px; border: 1px solid var(--border, #d1d5db); border-radius: 9px; }
+.ems-chat-input button { flex: 0 0 36px; height: 36px; border: 0; background: var(--primary, #3156a3); color: #fff; border-radius: 9px; display: grid; place-items: center; cursor: pointer; }
+.ems-chat-input button:disabled { opacity: .5; cursor: default; }
+.ems-chat-error { margin: 8px 12px 0; padding: 8px 10px; border-radius: 8px; color: var(--danger, #b91c1c); background: rgba(220, 38, 38, .08); font-size: .78rem; display: flex; justify-content: space-between; }
+.ems-chat-error button { border: 0; background: transparent; color: inherit; cursor: pointer; }
+.ems-chat-ticket { border: 1px solid var(--border, #e5e7eb); border-radius: 10px; padding: 11px; font-size: .82rem; }
+.ems-chat-ticket > div:first-child { display: flex; justify-content: space-between; align-items: center; }
+.ems-chat-ticket p { margin: 8px 0 5px; }
+.ems-chat-ticket details { margin-top: 8px; color: var(--text-secondary, #4b5563); }
+.ems-chat-ticket details p { padding: 6px 0; border-top: 1px solid var(--border, #e5e7eb); }
+.ems-ticket-status { font-size: .7rem; border-radius: 999px; background: #e5e7eb; padding: 3px 7px; }
+.status-resolved, .status-closed { background: #dcfce7; color: #166534; }
+.status-in-progress, .status-assigned { background: #dbeafe; color: #1d4ed8; }
+.ems-chat-ticket-form { display: flex; flex-direction: column; gap: 9px; padding: 12px; border: 1px solid var(--border, #e5e7eb); border-radius: 10px; font-size: .83rem; }
+.ems-chat-ticket-form label { display: flex; flex-direction: column; gap: 4px; color: var(--text-secondary, #4b5563); }
+.ems-chat-ticket-form input, .ems-chat-ticket-form textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border, #d1d5db); border-radius: 7px; padding: 8px; font: inherit; color: var(--text-primary, #1f2937); background: var(--surface, #fff); }
+.ems-chat-primary { background: var(--primary, #3156a3); color: white; border: 0; border-radius: 7px; padding: 9px; cursor: pointer; font-weight: 600; }
+.ems-chat-primary:disabled { opacity: .5; }
+.ems-chat-cancel, .ems-chat-ticket-actions button { background: transparent; border: 1px solid var(--border, #d1d5db); border-radius: 7px; padding: 8px; cursor: pointer; color: inherit; }
+.ems-chat-ticket-actions { display: flex; gap: 8px; }
+.ems-chat-ticket-actions > * { flex: 1; }
+@media (max-width: 600px) {
+  .ems-chat-root { right: 10px; bottom: 10px; }
+  .ems-chat-panel { width: calc(100vw - 20px); height: min(72dvh, 620px); margin-bottom: 9px; }
+  .ems-chat-launcher { padding: 12px 15px; }
+}
