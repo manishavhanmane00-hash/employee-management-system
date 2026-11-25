@@ -394,12 +394,13 @@ const EmployeeAttendance = () => {
   const [statusFilter,  setStatusFilter]  = useState('');
   const [modalOpen,     setModalOpen]     = useState(false);
 
-  // Only this employee's attendance — match by userId or email
+  // Only this employee's attendance — match by employeeId, userId, or email
   const myAttendance = useMemo(() =>
     attendanceData.filter(a =>
-      (a.userId  && a.userId?.toString()  === user?.id?.toString()) ||
-      (a.email   && a.email   === user?.email) ||
-      (a.employeeId && a.employeeId?.toString() === user?.id?.toString())
+      (user?.employeeId && a.employeeId === user.employeeId) ||
+      (a.userId && String(a.userId) === String(user?._id || user?.id)) ||
+      (a.email && user?.email && a.email.toLowerCase() === user.email.toLowerCase()) ||
+      (a.employeeId && a.employeeId.toString() === (user?.id || user?._id)?.toString())
     ),
     [attendanceData, user]
   );

@@ -20,7 +20,7 @@ const Payslip = ({ employee, payroll, id = 'payslip-print' }) => {
   return (
     <div id={id} style={{ background: 'white', padding: 32, fontFamily: 'Inter, sans-serif', maxWidth: 700, margin: '0 auto', border: '1px solid #e2e8f0', borderRadius: 12 }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, paddingBottom: 20, borderBottom: '2px solid #4f46e5' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, paddingBottom: 20, borderBottom: '2px solid #2563eb' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 44, height: 44, background: 'var(--primary)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: '1rem' }}>E</div>
           <div>

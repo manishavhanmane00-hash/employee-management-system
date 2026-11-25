@@ -37,14 +37,24 @@ const EmployeeDashboard = () => {
   const today = new Date().toISOString().split('T')[0];
   const todayDisplay = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  // Filter data for this employee only (match by email since that's on user object)
+  // Filter data for this employee only (match by employeeId, userId, or email)
   const myAttendance = useMemo(() =>
-    attendanceData.filter(a => a.employeeId === user?.id || a.email === user?.email),
+    attendanceData.filter(a =>
+      (user?.employeeId && a.employeeId === user.employeeId)
+      || String(a.userId || '') === String(user?._id || user?.id || '')
+      || a.employeeId === user?.id
+      || (user?.email && a.email === user.email)
+    ),
     [attendanceData, user]
   );
 
   const myLeaveRequests = useMemo(() =>
-    leaveRequests.filter(r => r.employeeId === user?.id || r.email === user?.email),
+    leaveRequests.filter(r =>
+      (user?.employeeId && r.employeeId === user.employeeId)
+      || String(r.userId || '') === String(user?._id || user?.id || '')
+      || r.employeeId === user?.id
+      || (user?.email && r.email === user.email)
+    ),
     [leaveRequests, user]
   );
 
@@ -56,7 +66,12 @@ const EmployeeDashboard = () => {
   );
 
   const myPerformance = useMemo(() =>
-    performanceReviews.filter(r => r.employeeId === user?.id || r.email === user?.email),
+    performanceReviews.filter(r =>
+      (user?.employeeId && r.employeeId === user.employeeId)
+      || String(r.userId || '') === String(user?._id || user?.id || '')
+      || r.employeeId === user?.id
+      || (user?.email && r.email === user.email)
+    ),
     [performanceReviews, user]
   );
 
@@ -114,7 +129,7 @@ const EmployeeDashboard = () => {
       acts.push({ type: 'leave', text: `${r.leaveType} request (${r.status}) — ${r.startDate} to ${r.endDate}`, time: r.appliedDate || r.startDate, color: 'var(--primary)', bg: 'var(--primary-light)' });
     });
     myPayroll.slice(-2).reverse().forEach(p => {
-      acts.push({ type: 'payroll', text: `Payslip for ${p.month} ${p.year || ''} — ${p.status}`, time: p.paymentDate || '', color: 'var(--teal)', bg: 'var(--info-light)' });
+      acts.push({ type: 'payroll', text: `Payslip for ${p.month} ${p.year || ''} — ${p.status}`, time: p.paymentDate || '', color: 'var(--secondary)', bg: 'var(--info-light)' });
     });
     return acts.sort((a, b) => b.time?.localeCompare(a.time || '') || 0).slice(0, 6);
   }, [myAttendance, myLeaveRequests, myPayroll]);
@@ -155,42 +170,42 @@ const EmployeeDashboard = () => {
           icon={Clock} label="Present Days (Month)"
           value={presentDays || 0}
           sub="This month"
-          color="#4f46e5" bg="#eef2ff"
+          color="var(--secondary)" bg="var(--info-light)"
           onClick={() => navigate('/employee/attendance')}
         />
         <StatCard
           icon={PlaneTakeoff} label="Available Leave"
           value={remainingLeave}
           sub={`${usedLeave} used of ${totalLeave} total`}
-          color="#10b981" bg="#d1fae5"
+          color="var(--accent)" bg="var(--purple-light)"
           onClick={() => navigate('/employee/leave')}
         />
         <StatCard
           icon={AlertCircle} label="Pending Leave"
           value={pendingLeave}
           sub="Awaiting approval"
-          color="#f59e0b" bg="#fef3c7"
+          color="var(--secondary)" bg="var(--info-light)"
           onClick={() => navigate('/employee/leave')}
         />
         <StatCard
           icon={DollarSign} label="Net Salary (Month)"
           value={latestPayroll ? monthlySalaryDisplay : 'N/A'}
           sub={latestPayroll ? `${latestPayroll.month || ''}` : 'No salary record yet'}
-          color="#14b8a6" bg="#ccfbf1"
+          color="var(--accent)" bg="var(--purple-light)"
           onClick={() => navigate('/employee/payroll')}
         />
         <StatCard
           icon={Star} label="Performance Rating"
           value={latestReview ? `${latestReview.overallRating}/5 ★` : 'N/A'}
           sub={latestReview ? latestReview.reviewPeriod : 'No review yet'}
-          color="#f59e0b" bg="#fef3c7"
+          color="var(--secondary)" bg="var(--info-light)"
           onClick={() => navigate('/employee/performance')}
         />
         <StatCard
           icon={TrendingUp} label="Total Reviews"
           value={myPerformance.length}
           sub="Performance reviews"
-          color="#8b5cf6" bg="#ede9fe"
+          color="var(--accent)" bg="var(--purple-light)"
           onClick={() => navigate('/employee/performance')}
         />
       </div>

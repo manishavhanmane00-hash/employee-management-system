@@ -397,8 +397,8 @@ const EmployeeProfile = () => {
                   <div style={{ display: 'flex', gap: 4 }}>
                     {[1,2,3,4,5].map(s => (
                       <Star key={s} size={16}
-                        fill={s <= rev.overallRating ? '#f59e0b' : 'none'}
-                        color={s <= rev.overallRating ? '#f59e0b' : 'var(--border)'} />
+                        fill={s <= rev.overallRating ? 'var(--accent)' : 'none'}
+                        color={s <= rev.overallRating ? 'var(--accent)' : 'var(--border)'} />
                     ))}
                   </div>
                 </div>

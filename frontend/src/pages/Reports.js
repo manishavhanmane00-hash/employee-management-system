@@ -287,7 +287,7 @@ const Reports = () => {
   const deptDist = departments.map(d => ({
     name:      d.name,
     employees: employees.filter(e => e.department === d.name).length,
-    color:     ['#4f46e5','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316'][departments.indexOf(d) % 8],
+    color:     ['#2563eb','#7c3aed','#3b82f6','#8b5cf6','#5b21b6','#1d4ed8','#6d28d9','#4338ca'][departments.indexOf(d) % 8],
   })).filter(d => d.employees > 0);
 
   // Build salary distribution from live employees
@@ -318,7 +318,7 @@ const Reports = () => {
   const leaveStatData = ['Annual Leave','Sick Leave','Casual Leave','Other'].map((name, i) => ({
     name,
     value: leaveRequests.filter(r => r.leaveType === name).length || 0,
-    color: ['#4f46e5','#ef4444','#3b82f6','#8b5cf6'][i],
+    color: ['#2563eb','#7c3aed','#3b82f6','#8b5cf6'][i],
   })).filter(s => s.value > 0);
 
   // Attendance from live data
@@ -377,7 +377,7 @@ const Reports = () => {
                         cx="50%" cy="50%" outerRadius={80} dataKey="value" nameKey="name"
                         label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                       >
-                        {['#4f46e5','#10b981','#f59e0b','#8b5cf6'].map((c, i) => <Cell key={i} fill={c} />)}
+                        {['#2563eb','#7c3aed','#3b82f6','#8b5cf6'].map((c, i) => <Cell key={i} fill={c} />)}
                       </Pie>
                       <Tooltip />
                     </PieChart>
@@ -493,8 +493,8 @@ const Reports = () => {
                       <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}
                         tickFormatter={v => currencyFilter ? formatINRCompact(v, currencyFilter) : v.toLocaleString('en-IN')} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Line type="monotone" dataKey="INR" stroke="#14b8a6" strokeWidth={2.5} dot={{ r: 4, fill: '#14b8a6' }} name="Net Salary (INR)" />
-                      <Line type="monotone" dataKey="USD" stroke="#4f46e5" strokeWidth={2.5} dot={{ r: 4, fill: '#4f46e5' }} name="Net Salary (USD)" />
+                      <Line type="monotone" dataKey="INR" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 4, fill: '#2563eb' }} name="Net Salary (INR)" />
+                      <Line type="monotone" dataKey="USD" stroke="#7c3aed" strokeWidth={2.5} dot={{ r: 4, fill: '#7c3aed' }} name="Net Salary (USD)" />
                       <Line type="monotone" dataKey="UNVERIFIED" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 4, fill: '#f59e0b' }} name="Net Salary (Unverified)" />
                     </LineChart>
                   </ResponsiveContainer>
@@ -512,7 +512,7 @@ const Reports = () => {
                       <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false}
                         tickFormatter={v => formatINRCompact(v)} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="avg" fill="#4f46e5" radius={4} name="Average Net Payroll" />
+                      <Bar dataKey="avg" fill="#2563eb" radius={4} name="Average Net Payroll" />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <EmptyChart message="Add employees with salaries to see this chart" />}
@@ -533,7 +533,7 @@ const Reports = () => {
                     <XAxis type="number" domain={[0, 5]} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
                     <YAxis type="category" dataKey="dept" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={70} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="avg" fill="#f59e0b" radius={4} name="Avg Rating" />
+                    <Bar dataKey="avg" fill="#7c3aed" radius={4} name="Avg Rating" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -554,7 +554,7 @@ const Reports = () => {
                     <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="count" name="Employees" radius={4}>
-                      {['#ef4444','#f97316','#f59e0b','#3b82f6','#10b981'].map((c, i) => <Cell key={i} fill={c} />)}
+                      {['#1e40af','#2563eb','#3b82f6','#7c3aed','#5b21b6'].map((c, i) => <Cell key={i} fill={c} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>

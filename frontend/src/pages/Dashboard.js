@@ -133,18 +133,18 @@ const Dashboard = () => {
     .map((department, index) => ({
       ...department,
       employees: department.employeeCount,
-      color: ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][index % 5],
+      color: ['#2563eb', '#7c3aed', '#3b82f6', '#8b5cf6', '#5b21b6'][index % 5],
     }));
 
   const stats = [
-    { icon: Users,     label: 'Total Employees',      value: dashboardStats?.totalEmployees ?? employees.length,                      change: null, changeType: 'up',   color: 'var(--primary)', bg: 'var(--primary-light)' },
-    { icon: UserCheck, label: 'Active Employees',      value: dashboardStats?.activeEmployees ?? employees.filter(e=>e.status==='active').length, change: null, changeType: 'up',   color: 'var(--success)', bg: 'var(--success-light)' },
-    { icon: Calendar,  label: 'On Leave Today',        value: employees.filter(e=>e.status==='on-leave').length,                      change: null, changeType: 'down', color: 'var(--warning)', bg: 'var(--warning-light)' },
-    { icon: UserCheck, label: 'Present Today',         value: dashboardStats?.presentToday ?? presentToday,                           change: null, changeType: 'up',   color: 'var(--info)', bg: 'var(--info-light)' },
-    { icon: UserMinus, label: 'Absent Today',          value: dashboardStats?.absentToday ?? absentToday,                             change: null, changeType: 'up',   color: 'var(--danger)', bg: 'var(--danger-light)' },
-    { icon: AlertCircle,label: 'Pending Leave',        value: dashboardStats?.pendingLeave ?? pendingLeave.length,                     change: null, changeType: 'down', color: 'var(--purple)', bg: 'var(--purple-light)' },
-    { icon: DollarSign, label: 'Current Month Payroll', value: monthlyPayrollTotal, change: null, changeType: 'up', color: 'var(--teal)', bg: 'var(--teal-light)' },
-    { icon: TrendingUp, label: 'Avg Attendance (7 days)', value: avgAttendance === null ? 'N/A' : `${avgAttendance}%`,                 change: null, changeType: 'up',   color: 'var(--orange)', bg: 'var(--orange-light)' },
+    { icon: Users,     label: 'Total Employees',      value: dashboardStats?.totalEmployees ?? employees.length,                      change: null, changeType: 'up',   color: 'var(--secondary)', bg: 'var(--info-light)' },
+    { icon: UserCheck, label: 'Active Employees',      value: dashboardStats?.activeEmployees ?? employees.filter(e=>e.status==='active').length, change: null, changeType: 'up',   color: 'var(--accent)', bg: 'var(--purple-light)' },
+    { icon: Calendar,  label: 'On Leave Today',        value: employees.filter(e=>e.status==='on-leave').length,                      change: null, changeType: 'down', color: 'var(--secondary)', bg: 'var(--info-light)' },
+    { icon: UserCheck, label: 'Present Today',         value: dashboardStats?.presentToday ?? presentToday,                           change: null, changeType: 'up',   color: 'var(--accent)', bg: 'var(--purple-light)' },
+    { icon: UserMinus, label: 'Absent Today',          value: dashboardStats?.absentToday ?? absentToday,                             change: null, changeType: 'up',   color: 'var(--secondary)', bg: 'var(--info-light)' },
+    { icon: AlertCircle,label: 'Pending Leave',        value: dashboardStats?.pendingLeave ?? pendingLeave.length,                     change: null, changeType: 'down', color: 'var(--accent)', bg: 'var(--purple-light)' },
+    { icon: DollarSign, label: 'Current Month Payroll', value: monthlyPayrollTotal, change: null, changeType: 'up', color: 'var(--secondary)', bg: 'var(--info-light)' },
+    { icon: TrendingUp, label: 'Avg Attendance (7 days)', value: avgAttendance === null ? 'N/A' : `${avgAttendance}%`,                 change: null, changeType: 'up',   color: 'var(--accent)', bg: 'var(--purple-light)' },
   ];
 
   return (
@@ -183,12 +183,12 @@ const Dashboard = () => {
           <div className="card-body" style={{ paddingTop: 8 }}>
             {employees.some(employee => employee.createdAt) ? <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={employeeGrowth}>
-                <defs><linearGradient id="empGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4f46e5" stopOpacity={0.15} /><stop offset="95%" stopColor="#4f46e5" stopOpacity={0} /></linearGradient></defs>
+                <defs><linearGradient id="empGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#2563eb" stopOpacity={0.15} /><stop offset="95%" stopColor="#2563eb" stopOpacity={0} /></linearGradient></defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="month" tick={{ fontSize: 12, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="employees" stroke="#4f46e5" strokeWidth={2.5} fill="url(#empGrad)" dot={false} name="Records added" />
+                <Area type="monotone" dataKey="employees" stroke="#2563eb" strokeWidth={2.5} fill="url(#empGrad)" dot={false} name="Records added" />
               </AreaChart>
             </ResponsiveContainer> : <div className="empty-state" style={{ height: 220 }}>No dated employee records are available.</div>}
           </div>
@@ -293,8 +293,8 @@ const Dashboard = () => {
                     {payload.map(item => <div key={item.dataKey} className="value">{item.name}: {formatINR(item.value, { currency: item.dataKey })}</div>)}
                   </div>
                 ) : null} />
-                <Line type="monotone" dataKey="INR" stroke="#14b8a6" strokeWidth={2.5} dot={{ fill: '#14b8a6', r: 4 }} name="Payroll (INR)" />
-                <Line type="monotone" dataKey="USD" stroke="#4f46e5" strokeWidth={2.5} dot={{ fill: '#4f46e5', r: 4 }} name="Payroll (USD)" />
+                <Line type="monotone" dataKey="INR" stroke="#2563eb" strokeWidth={2.5} dot={{ fill: '#2563eb', r: 4 }} name="Payroll (INR)" />
+                <Line type="monotone" dataKey="USD" stroke="#7c3aed" strokeWidth={2.5} dot={{ fill: '#7c3aed', r: 4 }} name="Payroll (USD)" />
                 <Line type="monotone" dataKey="UNVERIFIED" stroke="#f59e0b" strokeWidth={2.5} dot={{ fill: '#f59e0b', r: 4 }} name="Payroll (Unverified)" />
               </LineChart>
             </ResponsiveContainer> : <div className="empty-state" style={{ height: 200 }}>No payroll records are available for this period.</div>}

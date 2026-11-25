@@ -1,9 +1,9 @@
 import React from 'react';
 
 const COLORS = [
-  ['#4f46e5', '#eef2ff'], ['#10b981', '#d1fae5'], ['#f59e0b', '#fef3c7'],
-  ['#ef4444', '#fee2e2'], ['#3b82f6', '#dbeafe'], ['#8b5cf6', '#ede9fe'],
-  ['#ec4899', '#fce7f3'], ['#14b8a6', '#ccfbf1'], ['#f97316', '#ffedd5'],
+  ['#1d4ed8', '#dbeafe'], ['#2563eb', '#eff6ff'], ['#7c3aed', '#f3e8ff'],
+  ['#5b21b6', '#ede9fe'], ['#1e40af', '#dbeafe'], ['#8b5cf6', '#f5f3ff'],
+  ['#312e81', '#e0e7ff'], ['#3730a3', '#eef2ff'], ['#4338ca', '#e0e7ff'],
 ];
 
 const getColor = (name = '') => {

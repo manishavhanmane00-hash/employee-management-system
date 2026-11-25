@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 
-const Modal = ({ open, onClose, title, children, footer, size = 'md', className = '' }) => {
+const Modal = ({ open, onClose, title, children, footer, size = 'md', className = '', overlayClassName = '' }) => {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -14,7 +14,7 @@ const Modal = ({ open, onClose, title, children, footer, size = 'md', className 
   if (!open) return null;
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className={`modal-overlay ${overlayClassName}`} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={`modal modal-${size} ${className}`} role="dialog" aria-modal="true">
         {title && (
           <div className="modal-header">

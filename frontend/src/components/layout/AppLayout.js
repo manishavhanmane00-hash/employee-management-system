@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
 import Sidebar from './Sidebar';
@@ -9,6 +9,7 @@ import Chatbot from '../chat/Chatbot';
 const AppLayout = () => {
   const { user } = useAuth();
   const { sidebarCollapsed } = useApp();
+  const location = useLocation();
 
   if (!user) return <Navigate to="/login" replace />;
 
@@ -20,7 +21,7 @@ const AppLayout = () => {
       <Sidebar />
       <div className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <Header />
-        <main className="page-container">
+        <main className="page-container" data-page-path={location.pathname}>
           <Outlet />
         </main>
       </div>

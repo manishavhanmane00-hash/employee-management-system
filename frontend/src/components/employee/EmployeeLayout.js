@@ -28,7 +28,7 @@ const EmployeeLayout = () => {
   if (!onboardingComplete) {
     return (
       <div className="app-layout">
-        <main className="page-container" style={{ width: '100%', maxWidth: 1200, margin: '0 auto' }}>
+        <main className="page-container" data-page-path={location.pathname} style={{ width: '100%', maxWidth: 1200, margin: '0 auto' }}>
           <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 0' }}>
             <button type="button" className="btn btn-outline" onClick={() => { logout(); navigate('/login'); }}>Sign Out</button>
           </div>
@@ -43,7 +43,7 @@ const EmployeeLayout = () => {
       <EmployeeSidebar />
       <div className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <EmployeeHeader />
-        <main className="page-container">
+        <main className="page-container" data-page-path={location.pathname}>
           <Outlet />
         </main>
       </div>

@@ -54,7 +54,11 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: data.message };
     } catch (err) {
       setLoading(false);
-      return { success: false, error: err.response?.data?.message || 'Login failed' };
+      const errorMsg = err.response?.data?.message
+        || (err.code === 'ERR_NETWORK' || !err.response
+          ? 'Cannot connect to server. Please ensure the backend server is running on port 5000.'
+          : 'Login failed');
+      return { success: false, error: errorMsg };
     }
   };
 

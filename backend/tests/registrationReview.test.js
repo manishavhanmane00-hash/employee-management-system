@@ -8,7 +8,7 @@ const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { ensureUniqueEmployeeAccountMappings } = require('../services/employeeAccountIndexes');
 const { resolveRequestIdentity } = require('../services/employeeIdentity');
-const { login } = require('../controllers/authController');
+const { login, register } = require('../controllers/authController');
 const { reviewRegistration } = require('../controllers/onboardingController');
 
 let mongo;
@@ -74,6 +74,73 @@ const review = (admin, user, decision, overrides = {}) => callHandler(reviewRegi
 
 const attemptLogin = user => callHandler(login, {
   body: { identifier: user.email, password: 'test-password' },
+});
+
+test('email registration can be submitted without an Employee ID for Admin review', async () => {
+  const admin = await createAdmin();
+
+  const result = await callHandler(register, {
+    body: {
+      name: 'New Applicant',
+      email: 'new.applicant@example.test',
+      password: 'test-password',
+    },
+  });
+  const user = await User.findOne({ email: 'new.applicant@example.test' });
+
+  assert.equal(result.statusCode, 202, JSON.stringify(result.body));
+  assert.equal(result.body.pendingApproval, true);
+  assert.ok(user);
+  assert.equal(user.registrationEmployeeId, '');
+  assert.equal(user.registrationEmployeeRef, null);
+  assert.equal(user.registrationIdentityStatus, 'needs_review');
+  assert.equal(await Notification.countDocuments({ userId: user._id, type: 'registration' }), 1);
+  assert.equal(result.body.message, 'Your registration request has been submitted successfully. Please wait for Admin approval.');
+
+  const pendingLogin = await attemptLogin(user);
+  assert.equal(pendingLogin.statusCode, 403);
+  assert.equal(pendingLogin.body.code, 'REGISTRATION_PENDING');
+
+  const approval = await callHandler(reviewRegistration, {
+    params: { id: String(user._id) },
+    user: { _id: admin._id, id: String(admin._id), name: admin.name, role: 'Admin' },
+    body: { decision: 'approve' },
+  });
+  const approvedUser = await User.findById(user._id);
+  const approvedLogin = await attemptLogin(approvedUser);
+
+  assert.equal(approval.statusCode, 200, JSON.stringify(approval.body));
+  assert.equal(approvedUser.registrationStatus, 'approved');
+  assert.equal(approvedUser.employeeRef, null);
+  assert.equal(approvedUser.employeeId, undefined);
+  assert.equal(approvedUser.registrationIdentityStatus, 'needs_review');
+  assert.equal(approvedLogin.statusCode, 200, JSON.stringify(approvedLogin.body));
+});
+
+test('registration with an Employee ID continues to match the employee record', async () => {
+  await createAdmin();
+  const employee = await Employee.create({
+    employeeId: 'EMP-REGISTER-01',
+    name: 'Existing Employee',
+    email: 'existing.employee@example.test',
+    department: 'Engineering',
+    designation: 'Engineer',
+    status: 'active',
+  });
+
+  const result = await callHandler(register, {
+    body: {
+      name: employee.name,
+      email: employee.email,
+      employeeId: employee.employeeId,
+      password: 'test-password',
+    },
+  });
+  const user = await User.findOne({ email: employee.email });
+
+  assert.equal(result.statusCode, 202, JSON.stringify(result.body));
+  assert.equal(user.registrationIdentityStatus, 'matched');
+  assert.equal(String(user.registrationEmployeeRef), String(employee._id));
 });
 
 test('repeated and concurrent approvals are idempotent and create one employee link', async () => {

@@ -28,9 +28,11 @@ const EmployeeLeave = () => {
 
   const myRequests = useMemo(() =>
     leaveRequests.filter(r =>
-      (user?._id && String(r.userId) === String(user._id))
+      (user?.employeeId && r.employeeId === user.employeeId)
+      || (user?._id && String(r.userId) === String(user._id))
       || (user?.id && String(r.userId) === String(user.id))
-      || r.email === user?.email
+      || (user?.email && r.email?.toLowerCase() === user.email.toLowerCase())
+      || (r.employeeId && r.employeeId === user?.id)
     )
       .sort((a, b) => (b.appliedDate || '').localeCompare(a.appliedDate || '')),
     [leaveRequests, user]

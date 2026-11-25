@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 
 const RATINGS = [
   { value: 1, label: 'Poor', color: 'var(--danger)' },
-  { value: 2, label: 'Needs Improvement', color: 'var(--orange)' },
+  { value: 2, label: 'Needs Improvement', color: 'var(--accent)' },
   { value: 3, label: 'Meets Expectations', color: 'var(--warning)' },
   { value: 4, label: 'Very Good', color: 'var(--info)' },
   { value: 5, label: 'Excellent', color: 'var(--success)' },
@@ -18,7 +18,7 @@ const RATINGS = [
 const StarRating = ({ value, onChange, readonly }) => (
   <div className="star-rating">
     {[1,2,3,4,5].map(s => (
-      <Star key={s} size={20} fill={s <= value ? '#f59e0b' : 'none'} color={s <= value ? '#f59e0b' : 'var(--border)'}
+      <Star key={s} size={20} fill={s <= value ? 'var(--accent)' : 'none'} color={s <= value ? 'var(--accent)' : 'var(--border)'}
         className="star" style={{ cursor: readonly ? 'default' : 'pointer' }}
         onClick={() => !readonly && onChange && onChange(s)} />
     ))}

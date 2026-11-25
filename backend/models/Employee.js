@@ -17,9 +17,12 @@ const employeeSchema = new mongoose.Schema(
     firstName:    { type: String, default: '', trim: true },
     lastName:     { type: String, default: '', trim: true },
     email:        { type: String, trim: true, lowercase: true },
+    personalEmail: { type: String, default: '', trim: true, lowercase: true },
     phone:        { type: String, default: '', trim: true },
     emergencyContactName: { type: String, default: '', trim: true },
+    emergencyContactRelationship: { type: String, default: '', trim: true },
     emergencyContactPhone: { type: String, default: '', trim: true },
+    emergencyContactAddress: { type: String, default: '', trim: true },
     altPhone:     { type: String, default: '' },
     gender:       { type: String, default: '' },
     dob:          { type: String, default: '' },
@@ -43,6 +46,9 @@ const employeeSchema = new mongoose.Schema(
     workLocation: { type: String, default: '' },
     status:       { type: String, default: 'active', enum: ['active', 'inactive', 'on-leave'], index: true },
     probation:    { type: String, default: '' },
+    highestQualification: { type: String, default: '', trim: true },
+    workExperienceYears: { type: Number, default: 0, min: 0, max: 80 },
+    skills:       { type: String, default: '' },
 
     // Compensation
     salary:       { type: Number, default: 0, min: [0, 'Salary cannot be negative'] },

@@ -187,7 +187,7 @@ const AttendanceReports = () => {
                 <Bar dataKey="present" fill="#10b981" radius={3} name="Present" />
                 <Bar dataKey="absent" fill="#ef4444" radius={3} name="Absent" />
                 <Bar dataKey="late" fill="#f59e0b" radius={3} name="Late" />
-                <Bar dataKey="halfDay" fill="#6366f1" radius={3} name="Half Day" />
+                <Bar dataKey="halfDay" fill="#7c3aed" radius={3} name="Half Day" />
               </BarChart>
             </ResponsiveContainer>
           ) : <div className="empty-state">No attendance records match the selected month and department.</div>}

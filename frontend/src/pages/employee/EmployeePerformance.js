@@ -13,8 +13,8 @@ const StarDisplay = ({ value, max = 5 }) => (
       <Star
         key={i}
         size={18}
-        fill={i < value ? '#f59e0b' : 'none'}
-        color={i < value ? '#f59e0b' : 'var(--border)'}
+        fill={i < value ? 'var(--accent)' : 'none'}
+        color={i < value ? 'var(--accent)' : 'var(--border)'}
       />
     ))}
     <span style={{ marginLeft: 6, fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
@@ -31,7 +31,13 @@ const EmployeePerformance = () => {
 
   const myReviews = useMemo(() =>
     performanceReviews
-      .filter(r => r.employeeId === user?.id || r.email === user?.email)
+      .filter(r =>
+        (user?.employeeId && r.employeeId === user.employeeId)
+        || (user?._id && String(r.userId) === String(user._id))
+        || (user?.id && String(r.userId) === String(user.id))
+        || (user?.email && r.email?.toLowerCase() === user.email.toLowerCase())
+        || r.employeeId === user?.id
+      )
       .sort((a, b) => (b.reviewDate || '').localeCompare(a.reviewDate || '')),
     [performanceReviews, user]
   );

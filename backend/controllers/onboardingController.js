@@ -4,26 +4,39 @@ const Employee = require('../models/Employee');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const ActivityLog = require('../models/ActivityLog');
-const { linkEmployeeAccount } = require('../services/employeeIdentity');
+const { generateUniqueEmployeeId, linkEmployeeAccount } = require('../services/employeeIdentity');
 const { managerAssignedEmployees } = require('../services/employeeIdentity');
 const { resolvePermissionsForRole } = require('./permissionController');
 const { publishNotification } = require('../services/notificationEvents');
 
 const REQUIRED_ONBOARDING_FIELDS = [
+  'name',
   'dateOfBirth',
   'gender',
   'phone',
+  'personalEmail',
   'address',
   'city',
   'state',
   'country',
   'emergencyContactName',
+  'emergencyContactRelationship',
   'emergencyContactPhone',
+  'emergencyContactAddress',
+];
+const ONBOARDING_FIELDS = [
+  ...REQUIRED_ONBOARDING_FIELDS,
+  'highestQualification',
+  'workExperience',
+  'skills',
 ];
 const ALLOWED_DOCUMENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+const ALLOWED_PROFILE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_DOCUMENT_SIZE = 3 * 1024 * 1024;
 const MAX_TOTAL_DOCUMENT_SIZE = 5 * 1024 * 1024;
 const MAX_DOCUMENTS = 5;
+const MAX_PROFILE_PHOTO_SIZE = 2 * 1024 * 1024;
+const ALLOWED_EMERGENCY_RELATIONSHIPS = new Set(['Parent', 'Spouse', 'Child', 'Sibling', 'Relative', 'Friend', 'Other']);
 const documentMatchesMimeType = (buffer, mimeType) => {
   if (mimeType === 'application/pdf') return buffer.subarray(0, 5).toString() === '%PDF-';
   if (mimeType === 'image/jpeg') return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
@@ -35,6 +48,10 @@ const documentMatchesMimeType = (buffer, mimeType) => {
 const validateOnboardingFields = fields => {
   const missing = REQUIRED_ONBOARDING_FIELDS.filter(field => !String(fields[field] || '').trim());
   const errors = [];
+  if (String(fields.name || '').trim().length > 150) errors.push('Full Name cannot exceed 150 characters.');
+  if (fields.personalEmail && !/^\S+@\S+\.\S+$/.test(String(fields.personalEmail).trim())) {
+    errors.push('Enter a valid personal email address.');
+  }
   const dateOfBirth = String(fields.dateOfBirth || '');
   const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth) ? new Date(`${dateOfBirth}T00:00:00Z`) : null;
   if (!parsedDate || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateOfBirth || parsedDate > new Date()) {
@@ -43,14 +60,33 @@ const validateOnboardingFields = fields => {
   if (!['Female', 'Male', 'Non-binary', 'Prefer not to say'].includes(String(fields.gender || ''))) {
     errors.push('Select a valid gender option.');
   }
+  if (!ALLOWED_EMERGENCY_RELATIONSHIPS.has(String(fields.emergencyContactRelationship || ''))) {
+    errors.push('Select a valid emergency contact relationship.');
+  }
   for (const field of ['phone', 'emergencyContactPhone']) {
     const value = String(fields[field] || '').trim();
     if (value && !/^[+()\d\s-]{7,24}$/.test(value)) errors.push(`${field} must be a valid phone number.`);
   }
+  if (fields.workExperience !== '' && fields.workExperience !== undefined) {
+    const experience = Number(fields.workExperience);
+    if (!Number.isFinite(experience) || experience < 0 || experience > 80) {
+      errors.push('Work experience must be between 0 and 80 years.');
+    }
+  }
+  if (String(fields.skills || '').length > 1000) errors.push('Skills cannot exceed 1000 characters.');
   return { missing, errors };
 };
 
-const onboardingResponse = user => ({
+const employmentInformation = (user, employee) => ({
+  employeeId: employee?.employeeId || user.employeeId || '',
+  department: employee?.department || user.department || '',
+  designation: employee?.designation || user.designation || '',
+  joiningDate: employee?.joiningDate || employee?.dateOfJoining || '',
+  employmentType: employee?.employmentType || '',
+  reportingManager: employee?.manager || '',
+});
+
+const onboardingResponse = (user, employee) => ({
   fields: user.onboardingDraft?.fields || {},
   documents: (user.onboardingDraft?.documents || []).map(document => ({
     id: document.id,
@@ -71,7 +107,40 @@ const onboardingResponse = user => ({
     welcomeSeenAt: user.onboardingWelcomeSeenAt || null,
     reviewNote: user.onboardingReviewNote,
   },
+  employment: employmentInformation(user, employee),
+  profilePhoto: user.onboardingDraft?.profilePhoto || null,
 });
+
+const findLinkedEmployee = async user => {
+  const linkedByReference = user.employeeRef
+    ? await Employee.findOne({ _id: user.employeeRef, isDraft: { $ne: true } })
+    : null;
+  return linkedByReference || Employee.findOne({ userId: user._id, isDraft: { $ne: true } });
+};
+
+const findEmployeeForAccount = async (user, session) => {
+  const linkedByReference = user.employeeRef
+    ? await Employee.findOne({ _id: user.employeeRef, isDraft: { $ne: true } }).session(session)
+    : null;
+  if (linkedByReference) return linkedByReference;
+
+  const linkedByUser = await Employee.findOne({ userId: user._id, isDraft: { $ne: true } }).session(session);
+  if (linkedByUser) return linkedByUser;
+
+  const employeeId = user.employeeId || user.registrationEmployeeId;
+  if (employeeId) {
+    const linkedById = await Employee.findOne({ employeeId, isDraft: { $ne: true } }).session(session);
+    if (linkedById) return linkedById;
+  }
+
+  const email = String(user.email || '').trim();
+  if (!email) return null;
+  const byEmail = await Employee.findOne({
+    email: { $regex: `^${escapeRegExp(email)}$`, $options: 'i' },
+    isDraft: { $ne: true },
+  }).session(session);
+  return byEmail;
+};
 
 const notifyOnboarding = async (user, { title, message, actionUrl }) => {
   const admins = await User.find({ role: 'Admin', isActive: true }).select('_id').lean();
@@ -116,7 +185,8 @@ const getMyOnboarding = async (req, res) => {
     if (!user || user.role !== 'Employee') {
       return res.status(403).json({ success: false, message: 'Employee onboarding is not available for this account.' });
     }
-    res.json({ success: true, data: onboardingResponse(user) });
+    const employee = await findLinkedEmployee(user);
+    res.json({ success: true, data: onboardingResponse(user, employee) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -160,15 +230,38 @@ const saveMyOnboarding = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Onboarding fields must be an object.' });
     }
     const fields = {};
-    for (const field of REQUIRED_ONBOARDING_FIELDS) {
+    for (const field of ONBOARDING_FIELDS) {
       const value = String(incomingFields[field] || '').trim();
-      if (value.length > 500) return res.status(400).json({ success: false, message: `${field} cannot exceed 500 characters.` });
+      const maxLength = field === 'name' ? 150 : field === 'skills' ? 1000 : 500;
+      if (value.length > maxLength) return res.status(400).json({ success: false, message: `${field} cannot exceed ${maxLength} characters.` });
       fields[field] = value;
     }
     const oldDraft = user.onboardingDraft || {};
     const previousOnboardingStatus = user.onboardingStatus;
     const oldDocuments = oldDraft.documents || [];
     let documents = oldDocuments;
+    let profilePhoto = oldDraft.profilePhoto || null;
+    if (req.body.profilePhoto !== undefined) {
+      const item = req.body.profilePhoto;
+      if (item === null) {
+        profilePhoto = null;
+      } else {
+        const content = String(item?.content || '');
+        const mimeType = String(item?.mimeType || '').toLowerCase();
+        const name = String(item?.name || '').replace(/[\\/\r\n]/g, '_').trim().slice(0, 120);
+        if (!name || !ALLOWED_PROFILE_PHOTO_TYPES.has(mimeType) || !/^[A-Za-z0-9+/]*={0,2}$/.test(content)) {
+          return res.status(400).json({ success: false, message: 'Profile photos must be JPEG, PNG, or WebP images.' });
+        }
+        const fileBuffer = Buffer.from(content, 'base64');
+        if (!fileBuffer.length || fileBuffer.length > MAX_PROFILE_PHOTO_SIZE) {
+          return res.status(400).json({ success: false, message: 'Profile photos must be no larger than 2 MB.' });
+        }
+        if (!documentMatchesMimeType(fileBuffer, mimeType)) {
+          return res.status(400).json({ success: false, message: 'The profile photo does not match its declared file type.' });
+        }
+        profilePhoto = { name, mimeType, size: fileBuffer.length, content, uploadedAt: new Date() };
+      }
+    }
     const removeDocumentIds = req.body.removeDocumentIds === undefined ? [] : req.body.removeDocumentIds;
     if (!Array.isArray(removeDocumentIds) || removeDocumentIds.some(id => typeof id !== 'string')) {
       return res.status(400).json({ success: false, message: 'Document removal list is invalid.' });
@@ -228,7 +321,7 @@ const saveMyOnboarding = async (req, res) => {
     }
 
     const newDocuments = documents.filter(document => !oldDocuments.some(previous => previous.id === document.id));
-    user.onboardingDraft = { fields, documents, savedAt: new Date() };
+    user.onboardingDraft = { fields, documents, profilePhoto, savedAt: new Date() };
     if (user.onboardingStatus === 'not_started') user.onboardingStatus = 'in_progress';
     await user.save();
     if (newDocuments.length) {
@@ -245,7 +338,8 @@ const saveMyOnboarding = async (req, res) => {
         throw notificationError;
       }
     }
-    res.json({ success: true, data: onboardingResponse(user), message: 'Onboarding draft saved.' });
+    const employee = await findLinkedEmployee(user);
+    res.json({ success: true, data: onboardingResponse(user, employee), message: 'Onboarding draft saved.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -278,7 +372,9 @@ const submitMyOnboarding = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Upload at least one required document before submitting.' });
     }
     const wasCorrection = user.onboardingStatus === 'correction_required'
+      || user.onboardingStatus === 'rejected'
       || user.personalInfoApprovalStatus === 'correction_required'
+      || user.personalInfoApprovalStatus === 'rejected'
       || user.documentVerificationStatus === 'correction_required';
     const previous = {
       onboardingStatus: user.onboardingStatus,
@@ -323,7 +419,8 @@ const submitMyOnboarding = async (req, res) => {
       await user.save();
       throw notificationError;
     }
-    res.json({ success: true, data: onboardingResponse(user), message: 'Personal information and documents submitted for Admin approval.' });
+    const employee = await findLinkedEmployee(user);
+    res.json({ success: true, data: onboardingResponse(user, employee), message: 'Your employee information has been submitted successfully. Your profile is now waiting for Admin verification.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -378,35 +475,61 @@ const requestProfileCorrection = async (req, res) => {
 const listRegistrationReviews = async (req, res) => {
   try {
     const registrations = await User.find({ role: 'Employee', registrationStatus: 'pending' })
-      .select('name email registrationEmployeeId registrationIdentityStatus registrationSubmittedAt registrationEmployeeRef')
+      .select('name email registrationStatus registrationEmployeeId registrationIdentityStatus registrationSubmittedAt registrationEmployeeRef')
       .sort({ registrationSubmittedAt: 1 }).limit(200).lean();
-    const employees = await Employee.find({ isDraft: { $ne: true }, status: 'active' })
-      .select('_id name employeeId email department designation userId').sort({ name: 1 }).lean();
-    const onboardings = await User.find({
+    const approvedRegistrations = await User.find({ role: 'Employee', registrationStatus: 'approved' })
+      .select('name email employeeId registrationStatus registrationSubmittedAt registrationReviewedAt registrationReviewedBy registrationReviewNote')
+      .sort({ registrationReviewedAt: -1 }).limit(200).lean();
+    const rejectedRegistrations = await User.find({ role: 'Employee', registrationStatus: 'rejected' })
+      .select('name email registrationStatus registrationSubmittedAt registrationReviewedAt registrationReviewNote')
+      .sort({ registrationReviewedAt: -1 }).limit(200).lean();
+    const profileReviews = await User.find({
       role: 'Employee',
       registrationStatus: 'approved',
-      onboardingStatus: 'submitted',
-    }).select('+onboardingDraft name email employeeId registrationEmployeeId onboardingStatus personalInfoApprovalStatus documentVerificationStatus onboardingSubmittedAt onboardingReviewNote')
-      .sort({ onboardingSubmittedAt: 1 }).limit(200).lean();
-    res.json({
-      success: true,
-      registrations: registrations.map(user => ({
+      onboardingStatus: { $in: ['submitted', 'completed', 'correction_required', 'rejected'] },
+    }).select('+onboardingDraft name email employeeId employeeRef registrationEmployeeId registrationEmployeeRef onboardingStatus personalInfoApprovalStatus documentVerificationStatus onboardingSubmittedAt onboardingReviewedAt onboardingReviewNote')
+      .sort({ onboardingSubmittedAt: -1 }).limit(600).lean();
+    const linkedEmployees = await Employee.find({
+      $or: [
+        { userId: { $in: profileReviews.map(user => user._id) } },
+        { employeeId: { $in: profileReviews.map(user => user.employeeId).filter(Boolean) } },
+      ],
+      isDraft: { $ne: true },
+    }).select('_id userId employeeId department designation joiningDate dateOfJoining employmentType manager').lean();
+    const formatProfileReview = user => {
+      const employeeRef = user.employeeRef || user.registrationEmployeeRef;
+      const employee = linkedEmployees.find(candidate =>
+        (employeeRef && String(candidate._id) === String(employeeRef))
+        || String(candidate.userId || '') === String(user._id)
+        || (user.employeeId && candidate.employeeId === user.employeeId)
+      );
+      const profilePhoto = user.onboardingDraft?.profilePhoto;
+      return {
         ...user,
-        candidateEmployees: employees.filter(employee =>
-          (user.registrationEmployeeId && employee.employeeId?.toLowerCase() === user.registrationEmployeeId.toLowerCase())
-          || employee.email?.toLowerCase() === user.email.toLowerCase()
-        ),
-      })),
-      employees,
-      onboardings: onboardings.map(user => ({
-        ...user,
+        employment: employmentInformation(user, employee),
         onboardingDraft: {
           fields: user.onboardingDraft?.fields || {},
+          profilePhoto: profilePhoto ? {
+            name: profilePhoto.name,
+            mimeType: profilePhoto.mimeType,
+            size: profilePhoto.size,
+            uploadedAt: profilePhoto.uploadedAt,
+          } : null,
           documents: (user.onboardingDraft?.documents || []).map(({ id, name, mimeType, size, uploadedAt, archivedAt, verificationStatus, reviewNote }) => ({
             id, name, mimeType, size, uploadedAt, archivedAt, verificationStatus, reviewNote,
           })),
         },
-      })),
+      };
+    };
+    const formattedProfiles = profileReviews.map(formatProfileReview);
+    res.json({
+      success: true,
+      registrations,
+      approvedRegistrations,
+      rejectedRegistrations,
+      onboardings: formattedProfiles.filter(user => user.onboardingStatus === 'submitted'),
+      approvedProfiles: formattedProfiles.filter(user => user.onboardingStatus === 'completed'),
+      correctionRequests: formattedProfiles.filter(user => ['correction_required', 'rejected'].includes(user.onboardingStatus)),
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -489,32 +612,31 @@ const reviewRegistration = async (req, res) => {
 
       let employee = null;
       if (decision === 'approve') {
-        const selectedEmployeeId = String(employeeId || user.registrationEmployeeId || '').trim();
-        if (!selectedEmployeeId || selectedEmployeeId === 'undefined') {
-          const error = new Error('Select and verify the existing Employee record before approving this registration.');
-          error.statusCode = 400;
-          throw error;
+        const selectedEmployeeId = String(employeeId || (
+          user.registrationIdentityStatus === 'matched' ? user.registrationEmployeeId : ''
+        ) || '').trim();
+        if (selectedEmployeeId && selectedEmployeeId !== 'undefined') {
+          employee = await findEmployeeForRegistrationApproval(selectedEmployeeId, session);
+          if (!employee) {
+            const error = new Error('The selected active Employee record could not be found.');
+            error.statusCode = 404;
+            throw error;
+          }
+          const existingAccount = await User.findOne({
+            _id: { $ne: user._id },
+            $or: [{ employeeRef: employee._id }, { employeeId: employee.employeeId }],
+          }).select('_id').session(session).lean();
+          if ((employee.userId && String(employee.userId) !== String(user._id)) || existingAccount) {
+            const error = new Error('The selected Employee record is already linked to another account.');
+            error.statusCode = 409;
+            throw error;
+          }
+          await linkEmployeeAccount(employee, user, false, ['Employee'], { session });
         }
-        employee = await findEmployeeForRegistrationApproval(selectedEmployeeId, session);
-        if (!employee) {
-          const error = new Error('The selected active Employee record could not be found.');
-          error.statusCode = 404;
-          throw error;
-        }
-        const existingAccount = await User.findOne({
-          _id: { $ne: user._id },
-          $or: [{ employeeRef: employee._id }, { employeeId: employee.employeeId }],
-        }).select('_id').session(session).lean();
-        if ((employee.userId && String(employee.userId) !== String(user._id)) || existingAccount) {
-          const error = new Error('The selected Employee record is already linked to another account.');
-          error.statusCode = 409;
-          throw error;
-        }
-        await linkEmployeeAccount(employee, user, false, ['Employee'], { session });
         user.registrationStatus = 'approved';
-        user.registrationIdentityStatus = 'matched';
-        user.registrationEmployeeRef = employee._id;
-        user.registrationEmployeeId = employee.employeeId;
+        user.registrationIdentityStatus = employee ? 'matched' : 'needs_review';
+        user.registrationEmployeeRef = employee?._id || null;
+        user.registrationEmployeeId = employee?.employeeId || user.registrationEmployeeId || '';
         user.isActive = true;
         user.accountStatus = 'active';
         user.onboardingStatus = 'not_started';
@@ -567,7 +689,7 @@ const reviewRegistration = async (req, res) => {
         }] : []),
       ], { session }));
 
-      if (decision === 'approve') {
+      if (decision === 'approve' && employee) {
         const directoryUsers = await User.find({
           role: { $in: ['Admin', 'HR', 'Manager'] }, isActive: true,
         }).select('_id').session(session).lean();
@@ -633,18 +755,17 @@ const reviewOnboarding = async (req, res) => {
   let alreadyReviewed = false;
   try {
     const { decision, note = '' } = req.body || {};
-    if (!['approve', 'correction'].includes(decision)) {
-      return res.status(400).json({ success: false, message: 'Decision must be approve or correction.' });
+    if (!['approve', 'reject', 'correction'].includes(decision)) {
+      return res.status(400).json({ success: false, message: 'Decision must be approve, reject or correction.' });
     }
-    if (typeof note !== 'string' || note.length > 1000 || (decision === 'correction' && !note.trim())) {
-      return res.status(400).json({ success: false, message: decision === 'correction'
-        ? 'Provide a correction reason of no more than 1000 characters.'
+    if (typeof note !== 'string' || note.length > 1000 || (decision !== 'approve' && !note.trim())) {
+      return res.status(400).json({ success: false, message: decision !== 'approve'
+        ? 'Provide a reason of no more than 1000 characters.'
         : 'The review note must be no more than 1000 characters.' });
     }
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ success: false, message: 'Invalid Employee account ID.' });
     }
-
     const normalizedNote = note.trim();
     const applyReview = async (session) => {
       notifications.length = 0;
@@ -663,10 +784,13 @@ const reviewOnboarding = async (req, res) => {
           && existing?.onboardingStatus === 'completed'
           && existing?.personalInfoApprovalStatus === 'approved'
           && existing?.documentVerificationStatus === 'verified';
+        const alreadyRejected = decision === 'reject'
+          && existing?.onboardingStatus === 'rejected'
+          && lastReview?.decision === 'reject';
         const alreadyCorrected = decision === 'correction'
           && existing?.onboardingStatus === 'correction_required'
           && lastReview?.decision === 'correction';
-        if (alreadyApproved || alreadyCorrected) {
+        if (alreadyApproved || alreadyRejected || alreadyCorrected) {
           responseUser = existing;
           alreadyReviewed = true;
           return;
@@ -680,6 +804,7 @@ const reviewOnboarding = async (req, res) => {
       const documents = user.onboardingDraft?.documents || [];
       const activeDocuments = documents.filter(document => !document.archivedAt);
       let employee = null;
+      let linkedDuringReview = false;
       if (decision === 'approve') {
         const validation = validateOnboardingFields(fields);
         if (validation.missing.length || validation.errors.length || !activeDocuments.length) {
@@ -689,22 +814,72 @@ const reviewOnboarding = async (req, res) => {
           error.fields = validation.missing;
           throw error;
         }
-        employee = await Employee.findOne({ userId: user._id, isDraft: { $ne: true } }).session(session);
-        if (!employee) {
-          const error = new Error('The Employee account is not linked to an Employee profile.');
+        employee = await findEmployeeForAccount(user, session);
+        if (employee?.userId && String(employee.userId) !== String(user._id)) {
+          const error = new Error('The matching Employee record is already linked to another account.');
           error.statusCode = 409;
           throw error;
         }
+        const accountEmployee = user.employeeRef && employee
+          && String(user.employeeRef) !== String(employee._id)
+          ? await Employee.findOne({ _id: user.employeeRef, isDraft: { $ne: true } }).session(session)
+          : null;
+        if (accountEmployee) {
+          const error = new Error('This account is already linked to a different Employee record.');
+          error.statusCode = 409;
+          throw error;
+        }
+        if (!employee) {
+          const employeeId = user.employeeId || user.registrationEmployeeId || await generateUniqueEmployeeId(session);
+          const idOwner = await Employee.findOne({ employeeId, isDraft: { $ne: true } }).session(session);
+          if (idOwner) {
+            const error = new Error('The Employee ID on this account belongs to a different Employee record.');
+            error.statusCode = 409;
+            throw error;
+          }
+          employee = new Employee({
+            employeeId,
+            name: String(fields.name).trim(),
+            email: user.email,
+            department: user.department || 'Unassigned',
+            designation: user.designation || '',
+            joiningDate: new Date().toISOString().slice(0, 10),
+            status: 'active',
+          });
+          await employee.save({ session });
+          linkedDuringReview = true;
+        }
+        if (!employee.employeeId) employee.employeeId = await generateUniqueEmployeeId(session);
+        await linkEmployeeAccount(employee, user, false, ['Employee'], { session });
+        user.registrationEmployeeRef = employee._id;
+        user.registrationEmployeeId = employee.employeeId;
+        const [firstName, ...lastName] = String(fields.name).trim().split(/\s+/);
+        employee.name = String(fields.name).trim();
+        employee.firstName = firstName;
+        employee.lastName = lastName.join(' ');
         employee.dob = fields.dateOfBirth;
         employee.gender = fields.gender;
         employee.phone = fields.phone;
+        employee.personalEmail = fields.personalEmail;
         employee.address = fields.address;
         employee.city = fields.city;
         employee.state = fields.state;
         employee.country = fields.country;
         employee.emergencyContactName = fields.emergencyContactName;
+        employee.emergencyContactRelationship = fields.emergencyContactRelationship;
         employee.emergencyContactPhone = fields.emergencyContactPhone;
+        employee.emergencyContactAddress = fields.emergencyContactAddress;
+        employee.highestQualification = fields.highestQualification || '';
+        employee.workExperienceYears = fields.workExperience === '' ? 0 : Number(fields.workExperience);
+        employee.skills = fields.skills || '';
+        if (user.onboardingDraft?.profilePhoto?.content) {
+          const profilePhoto = user.onboardingDraft.profilePhoto;
+          const photoDataUrl = `data:${profilePhoto.mimeType};base64,${profilePhoto.content}`;
+          employee.avatar = photoDataUrl;
+          user.avatar = photoDataUrl;
+        }
         await employee.save({ session });
+        user.name = employee.name;
         user.phone = fields.phone;
         user.address = fields.address;
         user.city = fields.city;
@@ -720,13 +895,13 @@ const reviewOnboarding = async (req, res) => {
         user.accountStatus = 'active';
         user.isActive = true;
       } else {
-        user.onboardingStatus = 'correction_required';
-        user.personalInfoApprovalStatus = 'correction_required';
-        user.documentVerificationStatus = 'correction_required';
+        user.onboardingStatus = decision === 'reject' ? 'rejected' : 'correction_required';
+        user.personalInfoApprovalStatus = decision === 'reject' ? 'rejected' : 'correction_required';
+        user.documentVerificationStatus = decision === 'reject' ? 'rejected' : 'correction_required';
         user.onboardingReviewNote = normalizedNote;
         user.onboardingDraft.documents = documents.map(document => document.archivedAt
           ? document
-          : { ...document, verificationStatus: 'correction_required', reviewNote: user.onboardingReviewNote });
+          : { ...document, verificationStatus: user.documentVerificationStatus, reviewNote: user.onboardingReviewNote });
       }
 
       const reviewedAt = new Date();
@@ -751,15 +926,34 @@ const reviewOnboarding = async (req, res) => {
           { title: 'Employee account fully activated', message: 'Your Employee Portal account is fully activated with access to your authorized modules.', type: 'account', requestStatus: 'Active', actionUrl: '/employee/dashboard' },
           { title: 'Document verification status', message: 'Your uploaded documents have been verified by Admin.', type: 'onboarding', requestStatus: 'Verified', actionUrl: '/employee/onboarding' },
         ]
-        : [
-          { title: 'Correction requested by Admin', message: `Please correct and resubmit your profile. Admin note: ${normalizedNote}`, type: 'onboarding', requestStatus: 'Correction Required', actionUrl: '/employee/onboarding' },
-          { title: 'Document verification status', message: 'Admin requested corrections to your uploaded documents or personal information.', type: 'onboarding', requestStatus: 'Correction Required', actionUrl: '/employee/onboarding' },
-        ];
+        : decision === 'reject'
+          ? [
+            { title: 'Profile rejected — corrections required', message: `Your profile was rejected. Please correct and resubmit it. Admin reason: ${normalizedNote}`, type: 'onboarding', requestStatus: 'Rejected', actionUrl: '/employee/onboarding' },
+            { title: 'Document verification status', message: `Your profile and documents were rejected. Admin reason: ${normalizedNote}`, type: 'onboarding', requestStatus: 'Rejected', actionUrl: '/employee/onboarding' },
+          ]
+          : [
+            { title: 'Correction requested by Admin', message: `Please correct and resubmit your profile. Admin note: ${normalizedNote}`, type: 'onboarding', requestStatus: 'Correction Required', actionUrl: '/employee/onboarding' },
+            { title: 'Document verification status', message: 'Admin requested corrections to your uploaded documents or personal information.', type: 'onboarding', requestStatus: 'Correction Required', actionUrl: '/employee/onboarding' },
+          ];
       notifications.push(...await Notification.insertMany(notificationRows.map(notification => ({
         ...notification,
         userId: user._id,
         employeeId: user.employeeId,
       })), { session }));
+      if (decision === 'approve' && linkedDuringReview) {
+        const directoryUsers = await User.find({
+          role: { $in: ['Admin', 'HR', 'Manager'] }, isActive: true,
+        }).select('_id').session(session).lean();
+        notifications.push(...await Notification.insertMany(directoryUsers.map(recipient => ({
+          userId: recipient._id,
+          employeeId: employee.employeeId,
+          title: 'Employee directory updated',
+          message: `${user.name} (${employee.employeeId}) completed profile verification and is available in role-appropriate employee selectors.`,
+          type: 'directory',
+          requestStatus: 'Active',
+          actionUrl: '/employees/list',
+        })), { session }));
+      }
 
       await ActivityLog.create([{
         userId: req.user._id,
@@ -767,7 +961,9 @@ const reviewOnboarding = async (req, res) => {
         userRole: req.user.role,
         employeeId: employee?.employeeId || user.employeeId || '',
         module: 'onboarding',
-        action: decision === 'approve' ? 'personal_information_approved' : 'personal_information_correction_requested',
+        action: decision === 'approve'
+          ? 'personal_information_approved'
+          : decision === 'reject' ? 'personal_information_rejected' : 'personal_information_correction_requested',
         recordId: String(user._id),
         previousValue: { onboardingStatus: 'submitted', personalInfoApprovalStatus: 'pending', documentVerificationStatus: 'pending' },
         updatedValue: {
@@ -795,7 +991,9 @@ const reviewOnboarding = async (req, res) => {
         personalInfoApprovalStatus: responseUser.personalInfoApprovalStatus,
         documentVerificationStatus: responseUser.documentVerificationStatus,
       },
-      message: decision === 'approve' ? 'Onboarding approved.' : 'Correction requested.',
+      message: decision === 'approve'
+        ? 'Onboarding approved.'
+        : decision === 'reject' ? 'Profile rejected; the Employee may correct and resubmit it.' : 'Correction requested.',
     });
   } catch (error) {
     console.error('[Onboarding review]', error.message);
@@ -860,21 +1058,26 @@ const getOnboardingDocument = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid Employee account ID.' });
     }
     const user = await User.findOne({ _id: req.params.userId, role: 'Employee' }).select('+onboardingDraft');
-    const document = user?.onboardingDraft?.documents?.find(item => item.id === req.params.documentId);
+    if (!user) return res.status(404).json({ success: false, message: 'Employee account not found.' });
+    const isProfilePhoto = req.params.documentId === 'profile-photo';
+    const document = isProfilePhoto
+      ? user.onboardingDraft?.profilePhoto
+      : user.onboardingDraft?.documents?.find(item => item.id === req.params.documentId);
     if (!document) return res.status(404).json({ success: false, message: 'Document not found.' });
-    if (document.archivedAt && req.user.role !== 'Admin') {
+    if (!isProfilePhoto && document.archivedAt && req.user.role !== 'Admin') {
       return res.status(404).json({ success: false, message: 'Document not found.' });
     }
     const accessError = await onboardingDocumentAccessError(req, user);
     if (accessError) return res.status(403).json({ success: false, message: accessError });
     const content = Buffer.from(document.content || '', 'base64');
-    if (!documentMatchesMimeType(content, document.mimeType)) {
-      return res.status(500).json({ success: false, message: 'The stored document is invalid or damaged.' });
+    const allowedMimeTypes = isProfilePhoto ? ALLOWED_PROFILE_PHOTO_TYPES : ALLOWED_DOCUMENT_TYPES;
+    if (!allowedMimeTypes.has(document.mimeType) || !documentMatchesMimeType(content, document.mimeType)) {
+      return res.status(500).json({ success: false, message: 'The stored file is invalid or damaged.' });
     }
     res.set('Cache-Control', 'private, no-store');
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Content-Type', document.mimeType);
-    res.set('Content-Disposition', `attachment; filename="${document.name.replace(/["\r\n]/g, '_')}"`);
+    res.set('Content-Disposition', `${isProfilePhoto ? 'inline' : 'attachment'}; filename="${document.name.replace(/["\r\n]/g, '_')}"`);
     res.set('Content-Length', content.length);
     res.send(content);
   } catch (error) {

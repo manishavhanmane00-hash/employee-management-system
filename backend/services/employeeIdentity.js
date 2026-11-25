@@ -2,6 +2,27 @@ const mongoose = require('mongoose');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
 
+const generateUniqueEmployeeId = async (session = null) => {
+  const [employees, users] = await Promise.all([
+    Employee.find({ employeeId: /^EMP-\d+$/ }).select('employeeId').session(session).lean(),
+    User.find({ employeeId: /^EMP-\d+$/ }).select('employeeId').session(session).lean(),
+  ]);
+  const maxId = [...employees, ...users].reduce((max, record) => {
+    const match = /^EMP-(\d+)$/.exec(record.employeeId || '');
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+
+  for (let offset = 1; offset <= 10; offset += 1) {
+    const candidate = `EMP-${String(maxId + offset).padStart(4, '0')}`;
+    const [employeeExists, userExists] = await Promise.all([
+      Employee.exists({ employeeId: candidate }).session(session),
+      User.exists({ employeeId: candidate }).session(session),
+    ]);
+    if (!employeeExists && !userExists) return candidate;
+  }
+  throw new Error('Could not generate a unique Employee ID. Please retry the approval.');
+};
+
 const escapedRegex = value => new RegExp(`^${String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 const normalizeComparableString = value => String(value ?? '').trim().toLowerCase();
 
@@ -394,6 +415,7 @@ const linkEmployeeAccount = async (employee, account, replaceExisting = false, a
 };
 
 module.exports = {
+  generateUniqueEmployeeId,
   managerAssignedEmployees,
   managerTeamConditions,
   managerTeamUserIds,

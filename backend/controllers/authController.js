@@ -117,25 +117,31 @@ const safeUserWithPermissions = async (user) => {
 const register = async (req, res) => {
   try {
     const { name, email, password, employeeId } = req.body;
-    if (!name || !email || !password || !employeeId) {
-      return res.status(400).json({ success: false, message: 'Name, email, Employee ID and password are required.' });
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Name, email and password are required.' });
     }
-    if (!/^\S+@\S+\.\S+$/.test(String(email).trim()) || String(employeeId).trim().length > 64) {
-      return res.status(400).json({ success: false, message: 'Enter a valid email address and Employee ID.' });
+    if (!/^\S+@\S+\.\S+$/.test(String(email).trim())) {
+      return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
     }
     if (String(password).length < 8) {
       return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+    }
+    const normalizedEmployeeId = String(employeeId || '').trim();
+    if (normalizedEmployeeId.length > 64) {
+      return res.status(400).json({ success: false, message: 'Employee ID cannot exceed 64 characters.' });
     }
     const normalizedEmail = String(email).toLowerCase().trim();
     const exists = await User.findOne({ email: normalizedEmail }).select('_id').lean();
     if (exists) {
       return res.status(409).json({ success: false, message: 'An account with this email already exists. Sign in or contact Admin.' });
     }
-    const identity = await resolveRegistrationIdentity(normalizedEmail, employeeId);
-    const duplicateEmployeeId = await User.findOne({
-      registrationEmployeeId: new RegExp(`^${String(employeeId).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
-      registrationStatus: { $in: ['pending', 'approved'] },
-    }).select('_id').lean();
+    const identity = await resolveRegistrationIdentity(normalizedEmail, normalizedEmployeeId);
+    const duplicateEmployeeId = normalizedEmployeeId
+      ? await User.findOne({
+        registrationEmployeeId: new RegExp(`^${normalizedEmployeeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+        registrationStatus: { $in: ['pending', 'approved'] },
+      }).select('_id').lean()
+      : null;
     if (duplicateEmployeeId) {
       return res.status(409).json({ success: false, message: 'A registration or account already uses this Employee ID. Contact Admin for identity verification.' });
     }
@@ -169,7 +175,7 @@ const register = async (req, res) => {
       onboardingStatus: 'not_started',
       personalInfoApprovalStatus: 'not_submitted',
       documentVerificationStatus: 'not_submitted',
-      registrationEmployeeId: String(employeeId || '').trim(),
+      registrationEmployeeId: normalizedEmployeeId,
       registrationEmployeeRef: identity.employee?._id || null,
       registrationIdentityStatus: identity.status,
       registrationSubmittedAt: new Date(),
@@ -188,11 +194,11 @@ const register = async (req, res) => {
     res.status(202).json({
       success: true,
       pendingApproval: true,
-      message: 'Registration submitted. You can sign in after an Admin approves it.',
+      message: 'Your registration request has been submitted successfully. Please wait for Admin approval.',
     });
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(409).json({ success: false, message: 'An account or Employee ID with this email already exists.' });
+      return res.status(409).json({ success: false, message: 'An account with this email already exists.' });
     }
     res.status(500).json({ success: false, message: err.message });
   }

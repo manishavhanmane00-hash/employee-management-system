@@ -10,7 +10,7 @@ const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { getNotifications } = require('../controllers/notificationController');
 const {
-  markOnboardingWelcomeSeen, reviewOnboarding, saveMyOnboarding, submitMyOnboarding,
+  listRegistrationReviews, markOnboardingWelcomeSeen, reviewOnboarding, saveMyOnboarding, submitMyOnboarding,
 } = require('../controllers/onboardingController');
 const { addListener, publishNotification } = require('../services/notificationEvents');
 
@@ -35,15 +35,22 @@ after(async () => {
 });
 
 const fields = {
+  name: 'Onboarding Employee',
   dateOfBirth: '1990-01-02',
   gender: 'Prefer not to say',
   phone: '+1 555 123 4567',
+  personalEmail: 'personal.onboarding@example.test',
   address: '100 Main Street',
   city: 'Springfield',
   state: 'Illinois',
   country: 'United States',
   emergencyContactName: 'Emergency Contact',
+  emergencyContactRelationship: 'Sibling',
   emergencyContactPhone: '+1 555 987 6543',
+  emergencyContactAddress: '200 Emergency Street',
+  highestQualification: 'Bachelor degree',
+  workExperience: '4',
+  skills: 'Payroll, reporting',
 };
 const documentRecord = () => ({
   id: 'identity-document',
@@ -240,10 +247,87 @@ test('Stage 2 approval atomically persists profile, status, audit, history and n
   assert.equal(savedUser.onboardingReviewHistory.length, 1);
   assert.equal(savedUser.onboardingReviewHistory[0].reviewedByName, admin.name);
   assert.equal(savedEmployee.dob, fields.dateOfBirth);
+  assert.equal(savedEmployee.name, fields.name);
+  assert.equal(savedEmployee.personalEmail, fields.personalEmail);
   assert.equal(savedEmployee.emergencyContactName, fields.emergencyContactName);
+  assert.equal(savedEmployee.emergencyContactRelationship, fields.emergencyContactRelationship);
+  assert.equal(savedEmployee.emergencyContactAddress, fields.emergencyContactAddress);
+  assert.equal(savedEmployee.highestQualification, fields.highestQualification);
+  assert.equal(savedEmployee.workExperienceYears, 4);
+  assert.equal(savedEmployee.skills, fields.skills);
   assert.equal(await ActivityLog.countDocuments({ action: 'personal_information_approved' }), 1);
   assert.equal(await Notification.countDocuments({ userId: user._id, type: 'account' }), 1);
   assert.equal((await callProtect(savedUser, 'GET', '/api/leave')).passed, true);
+});
+
+test('Stage 2 approval creates and links an Employee record for registrations approved without a link', async () => {
+  const admin = await createAdmin();
+  const user = await User.create({
+    name: 'Unlinked Applicant',
+    email: 'unlinked.applicant@example.test',
+    password: 'test-password',
+    role: 'Employee',
+    registrationStatus: 'approved',
+    accountStatus: 'active',
+    isActive: true,
+    registrationIdentityStatus: 'needs_review',
+    onboardingStatus: 'submitted',
+    personalInfoApprovalStatus: 'pending',
+    documentVerificationStatus: 'pending',
+    onboardingDraft: { fields: { ...fields }, documents: [documentRecord()] },
+    onboardingSubmittedAt: new Date(),
+  });
+  const result = await review(admin, user, 'approve');
+  const repeated = await review(admin, user, 'approve');
+  const savedUser = await User.findById(user._id);
+  const savedEmployee = await Employee.findOne({ userId: user._id });
+
+  assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+  assert.equal(repeated.statusCode, 200);
+  assert.equal(repeated.body.alreadyReviewed, true);
+  assert.equal(savedUser.onboardingStatus, 'completed');
+  assert.ok(savedEmployee);
+  assert.equal(savedEmployee.email, user.email);
+  assert.equal(savedEmployee.department, 'Unassigned');
+  assert.equal(String(savedUser.employeeRef), String(savedEmployee._id));
+  assert.equal(savedUser.employeeId, savedEmployee.employeeId);
+  assert.equal(savedEmployee.userId.toString(), user._id.toString());
+  assert.match(savedEmployee.employeeId, /^EMP-\d+$/);
+  assert.equal(await Employee.countDocuments({ email: user.email }), 1);
+});
+
+test('Stage 2 approval reuses an existing unlinked Employee record matched by registration email', async () => {
+  const admin = await createAdmin();
+  const user = await User.create({
+    name: 'Existing Profile Applicant',
+    email: 'existing.profile@example.test',
+    password: 'test-password',
+    role: 'Employee',
+    registrationStatus: 'approved',
+    accountStatus: 'active',
+    isActive: true,
+    onboardingStatus: 'submitted',
+    personalInfoApprovalStatus: 'pending',
+    documentVerificationStatus: 'pending',
+    onboardingDraft: { fields: { ...fields }, documents: [documentRecord()] },
+    onboardingSubmittedAt: new Date(),
+  });
+  const employee = await Employee.create({
+    employeeId: 'EMP-EXISTING-PROFILE',
+    name: user.name,
+    email: user.email,
+    department: 'Engineering',
+    designation: 'Engineer',
+    status: 'active',
+  });
+
+  const result = await review(admin, user, 'approve');
+  const savedUser = await User.findById(user._id);
+
+  assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+  assert.equal(await Employee.countDocuments({ email: user.email }), 1);
+  assert.equal(String(savedUser.employeeRef), String(employee._id));
+  assert.equal(String((await Employee.findById(employee._id)).userId), String(user._id));
 });
 
 test('Stage 2 correction requires reason, preserves correction workflow and permits resubmission', async () => {
@@ -280,4 +364,83 @@ test('Stage 2 correction requires reason, preserves correction workflow and perm
   assert.equal(saved.personalInfoApprovalStatus, 'approved');
   assert.equal(saved.documentVerificationStatus, 'verified');
   assert.equal(saved.onboardingReviewHistory.length, 2);
+});
+
+test('Stage 2 rejection requires a reason, blocks modules, and permits correction and resubmission', async () => {
+  const admin = await createAdmin();
+  const { user } = await createEmployee();
+
+  const missingReason = await review(admin, user, 'reject');
+  assert.equal(missingReason.statusCode, 400);
+  assert.equal((await User.findById(user._id)).onboardingStatus, 'submitted');
+
+  const rejected = await review(admin, user, 'reject', 'Correct the emergency contact address.');
+  assert.equal(rejected.statusCode, 200);
+  let saved = await User.findById(user._id).select('+onboardingDraft');
+  assert.equal(saved.onboardingStatus, 'rejected');
+  assert.equal(saved.personalInfoApprovalStatus, 'rejected');
+  assert.equal(saved.documentVerificationStatus, 'rejected');
+  assert.equal(saved.onboardingReviewHistory[0].decision, 'reject');
+  assert.equal((await callProtect(saved, 'GET', '/api/leave')).statusCode, 403);
+  assert.equal((await callProtect(saved, 'PUT', '/api/auth/onboarding')).passed, true);
+
+  const employeeRequest = { id: String(user._id), _id: user._id, role: 'Employee', name: user.name };
+  const resaved = await callHandler(saveMyOnboarding, {
+    user: employeeRequest,
+    body: { fields: { ...fields, emergencyContactAddress: '300 Corrected Street' } },
+  });
+  assert.equal(resaved.statusCode, 200);
+  const resubmitted = await callHandler(submitMyOnboarding, { user: employeeRequest, body: {} });
+  saved = await User.findById(user._id);
+  assert.equal(resubmitted.statusCode, 200);
+  assert.equal(saved.onboardingStatus, 'submitted');
+  assert.equal(saved.personalInfoApprovalStatus, 'pending');
+  assert.equal(saved.documentVerificationStatus, 'pending');
+
+  const approved = await review(admin, saved, 'approve');
+  saved = await User.findById(user._id);
+  assert.equal(approved.statusCode, 200);
+  assert.equal(saved.onboardingStatus, 'completed');
+  assert.equal(saved.onboardingReviewHistory.length, 2);
+  assert.equal((await callProtect(saved, 'GET', '/api/leave')).passed, true);
+});
+
+test('profile photo is validated, hidden from approval queue payloads, and applied after profile approval', async () => {
+  const admin = await createAdmin();
+  const { user, employee } = await createEmployee({ status: 'not_started' });
+  const photoContent = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64');
+  const employeeRequest = { id: String(user._id), _id: user._id, role: 'Employee', name: user.name };
+
+  const invalidPhoto = await callHandler(saveMyOnboarding, {
+    user: employeeRequest,
+    body: { fields: { ...fields }, profilePhoto: { name: 'profile.txt', mimeType: 'text/plain', content: photoContent } },
+  });
+  assert.equal(invalidPhoto.statusCode, 400);
+
+  const savedDraft = await callHandler(saveMyOnboarding, {
+    user: employeeRequest,
+    body: {
+      fields: { ...fields },
+      profilePhoto: { name: 'profile.png', mimeType: 'image/png', content: photoContent },
+    },
+  });
+  assert.equal(savedDraft.statusCode, 200);
+  assert.equal(savedDraft.body.data.profilePhoto.content, photoContent);
+
+  const submitted = await callHandler(submitMyOnboarding, { user: employeeRequest, body: {} });
+  assert.equal(submitted.statusCode, 200);
+
+  const approvalQueue = await callHandler(listRegistrationReviews, { user: { role: 'Admin' } });
+  const queuedProfile = approvalQueue.body.onboardings.find(item => String(item._id) === String(user._id));
+  assert.equal(approvalQueue.statusCode, 200);
+  assert.equal(queuedProfile.onboardingDraft.profilePhoto.name, 'profile.png');
+  assert.equal(Object.prototype.hasOwnProperty.call(queuedProfile.onboardingDraft.profilePhoto, 'content'), false);
+
+  const reviewed = await review(admin, user, 'approve');
+  const savedUser = await User.findById(user._id);
+  const savedEmployee = await Employee.findById(employee._id);
+
+  assert.equal(reviewed.statusCode, 200);
+  assert.equal(savedUser.avatar, `data:image/png;base64,${photoContent}`);
+  assert.equal(savedEmployee.avatar, savedUser.avatar);
 });

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, User, Mail, Lock, Hash, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, User, Mail, Lock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
 import toast from 'react-hot-toast';
@@ -9,7 +9,7 @@ const Register = () => {
   const { register, loginWithGoogle, loading } = useAuth();
   const navigate = useNavigate();
 
-  const [form, setForm] = useState({ name: '', email: '', employeeId: '', password: '', confirm: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
   const [showPass, setShowPass] = useState(false);
   const [errors, setErrors] = useState({});
   const [authError, setAuthError] = useState('');
@@ -28,7 +28,6 @@ const Register = () => {
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Invalid email address';
     if (!form.password)          errs.password = 'Password is required';
     else if (form.password.length < 8)         errs.password = 'Minimum 8 characters';
-    if (!form.employeeId.trim()) errs.employeeId = 'Employee ID is required for identity verification';
     if (form.password !== form.confirm)        errs.confirm  = 'Passwords do not match';
     return errs;
   };
@@ -41,7 +40,6 @@ const Register = () => {
     const res = await register({
       name:        form.name.trim(),
       email:       form.email.trim().toLowerCase(),
-      employeeId:  form.employeeId.trim(),
       password:    form.password,
     });
 
@@ -130,16 +128,6 @@ const Register = () => {
             {errors.email && <div className="form-error">{errors.email}</div>}
           </div>
 
-          {/* Employee ID */}
-          <div className="register-field">
-            <label className="form-label">Employee ID <span className="required">*</span></label>
-            <div style={{ position: 'relative' }}>
-              <Hash size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input type="text" value={form.employeeId} onChange={e => set('employeeId', e.target.value)} placeholder="EMP-0001" style={inputStyle(errors.employeeId)} autoComplete="off" />
-            </div>
-            {errors.employeeId && <div className="form-error">{errors.employeeId}</div>}
-          </div>
-
           {/* Password */}
           <div className="register-field">
             <label className="form-label">Password <span className="required">*</span></label>
@@ -168,7 +156,7 @@ const Register = () => {
           </button>
             </form>
             <div className="auth-divider register-auth-divider">
-              <span>Register with Email and Employee ID</span>
+              <span>Register with Email</span>
             </div>
             <button type="button" className="register-option-button" onClick={() => setUseEmailSignup(false)}>
               Use Google signup instead
@@ -188,7 +176,7 @@ const Register = () => {
               <span>Or register with email</span>
             </div>
             <button type="button" className="register-option-button" onClick={() => setUseEmailSignup(true)}>
-              Register with Email and Employee ID instead
+              Register with Email instead
             </button>
           </>
         )}

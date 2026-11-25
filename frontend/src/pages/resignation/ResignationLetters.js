@@ -503,7 +503,7 @@ const ResignationLetters = () => {
           {[
             { label: 'Total Requests', value: stats.total, color: 'var(--primary)', icon: FileText },
             { label: 'Pending', value: stats.pending, color: 'var(--warning)', icon: AlertCircle },
-            { label: 'Manager Approved', value: stats.managerApproved, color: 'var(--info, #3b82f6)', icon: CheckCircle },
+            { label: 'Manager Approved', value: stats.managerApproved, color: 'var(--info, #2563eb)', icon: CheckCircle },
             { label: 'HR Approved', value: stats.hrApproved, color: 'var(--primary)', icon: ShieldCheck },
             { label: 'Final Approved', value: stats.finalApproved, color: 'var(--success)', icon: Flag },
             { label: 'Rejected', value: stats.rejected, color: 'var(--danger)', icon: XCircle },

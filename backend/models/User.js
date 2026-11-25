@@ -28,13 +28,13 @@ const userSchema = new mongoose.Schema({
   },
   onboardingStatus: {
     type: String,
-    enum: ['not_started', 'in_progress', 'submitted', 'correction_required', 'completed'],
+    enum: ['not_started', 'in_progress', 'submitted', 'correction_required', 'rejected', 'completed'],
     default: 'completed',
     index: true,
   },
   personalInfoApprovalStatus: {
     type: String,
-    enum: ['not_submitted', 'pending', 'correction_required', 'approved'],
+    enum: ['not_submitted', 'pending', 'correction_required', 'rejected', 'approved'],
     default: 'approved',
     index: true,
   },
@@ -75,7 +75,7 @@ const userSchema = new mongoose.Schema({
   onboardingReviewNote: { type: String, default: '' },
   onboardingReviewHistory: {
     type: [{
-      decision: { type: String, enum: ['approve', 'correction'], required: true },
+      decision: { type: String, enum: ['approve', 'reject', 'correction'], required: true },
       reviewedAt: { type: Date, required: true },
       reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
       reviewedByName: { type: String, default: '' },

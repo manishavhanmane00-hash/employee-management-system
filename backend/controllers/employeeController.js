@@ -2,7 +2,12 @@ const Employee = require('../models/Employee');
 const User     = require('../models/User');
 const ActivityLog = require('../models/ActivityLog');
 const Notification = require('../models/Notification');
-const { resolveEmployeeForUser, linkEmployeeAccount, managerAssignedEmployees } = require('../services/employeeIdentity');
+const {
+  generateUniqueEmployeeId,
+  resolveEmployeeForUser,
+  linkEmployeeAccount,
+  managerAssignedEmployees,
+} = require('../services/employeeIdentity');
 const { listEmployeeOptions } = require('../services/employeeDirectory');
 const { resolvePermissionsForRole } = require('./permissionController');
 const { publishNotification } = require('../services/notificationEvents');
@@ -115,44 +120,6 @@ const normalizeEmployeeData = (body) => {
   delete data.managerUserId;
   delete data.reportingManagerId;
   return data;
-};
-
-/**
- * Generate the next sequential employee ID (EMP-0001, EMP-0002, ...).
- * Scans the highest existing numeric suffix across BOTH Employee and User
- * collections so IDs never collide, even if a login account exists without a
- * matching employee record (or vice versa).
- */
-const generateEmployeeId = async () => {
-  const parseMax = (docs) => docs.reduce((max, d) => {
-    const m = /^EMP-(\d+)$/.exec(d.employeeId || '');
-    return m ? Math.max(max, parseInt(m[1], 10)) : max;
-  }, 0);
-
-  const [empLast, userLast] = await Promise.all([
-    Employee.findOne({ employeeId: /^EMP-\d+$/ }).sort({ employeeId: -1 }),
-    User.findOne({ employeeId: /^EMP-\d+$/ }).sort({ employeeId: -1 }),
-  ]);
-
-  const next = parseMax([empLast, userLast].filter(Boolean)) + 1;
-  return `EMP-${String(next).padStart(4, '0')}`;
-};
-
-/**
- * Generate a unique employee ID, retrying if a concurrent create grabbed the
- * same number. Guards against the (rare) race between read and write.
- */
-const generateUniqueEmployeeId = async () => {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const candidate = await generateEmployeeId();
-    const [empExists, userExists] = await Promise.all([
-      Employee.exists({ employeeId: candidate }),
-      User.exists({ employeeId: candidate }),
-    ]);
-    if (!empExists && !userExists) return candidate;
-  }
-  // Fallback: timestamp-based ID guaranteed unique
-  return `EMP-${Date.now().toString().slice(-8)}`;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
